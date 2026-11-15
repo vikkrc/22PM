@@ -73,7 +73,7 @@ const MAX_HANDLES = 3;
 const MAX_DOTS = 24;
 const DEBUG_VIEWS = [
   { value: 0, label: 'Final' }, { value: 5, label: 'Lighting only' }, { value: 1, label: 'Albedo (de-lit)' },
-  { value: 3, label: 'Baked' }, { value: 2, label: 'Normals' }, { value: 4, label: 'Depth' },
+  { value: 3, label: 'Glow (sweep)' }, { value: 2, label: 'Normals' }, { value: 4, label: 'Depth' },
 ];
 
 export function Viewport({ hidden }: { hidden: boolean }) {

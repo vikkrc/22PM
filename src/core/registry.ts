@@ -66,6 +66,9 @@ const lightCommon = (intensity: number, softness = 0.3): ParamDef[] => [
   f('specular', 'Specular', 0.15, 0, 1, { step: 0.01, section: 'Light' }),
   bool('castShadows', 'Cast shadows', true, { section: 'Shadow' }),
   f('shadowSoftness', 'Softness', softness, 0, 1, { step: 0.01, section: 'Shadow' }),
+  // Splats are fuzzy, so a surface can shadow itself. Raise this if lit surfaces show dark blotches,
+  // lower it if shadows detach from the objects casting them.
+  f('shadowBias', 'Bias', 0.04, 0, 2, { unit: 'm', step: 0.001, softMax: 0.25, mod: false, section: 'Shadow' }),
 ];
 
 export const KINDS: Record<Kind, KindDef> = {

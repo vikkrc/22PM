@@ -39,16 +39,31 @@ Everything was developed and tested on Linux against a software GPU. That proves
 
 ## Deviations from the brief worth knowing
 
+0. **Baked mix is a surface colour, not an unlit glow.** The brief's "baked ↔ relit mix" is implemented as a blend of the surface colour, which the virtual lights still illuminate, so darkness stays black (see 0.2.1). An unlit "show the original scan" glow could return as its own keyframable parameter if needed.
 1. **Keyframes replace the base value rather than add to it.** The brief's formula is `base + K(t) + modulators`. Here a keyed parameter's value is `K(t) + modulators`; the base is used only when there are no keys. Absolute keyframes are what you expect when you type a value. Editing a keyed parameter writes a key at the playhead.
 2. **Modulator depth is in the parameter's own units** for Add (a depth of 5 on intensity swings it by 5), and a 0–1 mix for Multiply and Replace.
 3. **The base layer.** Each song has an always-on camera, global light and post grade. Clips on the camera and global tracks override it and crossfade with their fade times. Lights and animators exist only inside their clips, as the brief says.
 4. **Normals without capture cameras.** They are the shortest covariance axis, pointed away from the scan's centre and smoothed in a voxel grid. Per splat you choose Face viewer (default), Outward or Inward. "Normal strength" also falls automatically where neighbouring normals disagree, which softens blotches.
-5. **Shadows use a stochastic alpha test**, so translucent Gaussians cast lighter shadows. The pattern is a hash of pixel and Gaussian index, so it is stable from frame to frame.
+5. **Shadow casting uses a coverage cut-off**: a Gaussian blocks light where its opacity is above 0.35, with depth following its own plane. Translucent wisps cast no shadow; filtering in the lighting pass gives the soft edges.
 6. **Animators act on unsorted positions.** Draw order comes from each Gaussian's rest position, so a strong disperse can blend slightly out of order.
 7. **Supersampled or motion-blurred renders are not bit-identical to live playback**; they are the same frames at higher quality. At 1× / no blur the paths are identical.
 8. **`.ply` imports are rotated 180° about Z** on the assumption they are Y-down (COLMAP convention, as SuperSplat does). `.spz` is taken as Y-up. "Flip upright" in the splat inspector fixes a wrong guess.
 
 ## Changelog
+
+### 0.2.1 – fixes from the first test on the M4 Max
+
+- **Fade-outs no longer cut off.** Light fades follow perceived brightness: the clip fade is eased and raised to the power 2.2 before it scales intensity. A linear fade looked unchanged for most of its length, then dropped to black at the clip's end. Camera, global and post crossfades and animator fades are eased too.
+- **No light means black.** *Baked mix* (now labelled *Baked colour*) no longer adds the scan's colours as glow on top of the lighting. It blends the surface colour between de-lit and original, and that colour is lit only by the virtual lights. With the global light at 0 and no lights, the frame is pitch black.
+- **Menus are always visible.** All menus, including a track's **+** menu and the double-click lane menu, float above the whole app, flip up when there is no room below, and close with Escape.
+- **Fade handles are easy to grab.** The small squares at a clip's top corners drag the fade in and out; trim edges no longer cover them.
+- **Soft shadows without grain or blotches.** Four causes, each fixed and checked in renders:
+  1. Lighting used the alpha-averaged depth through a splat, which put thinly covered points inside the object, where its own front surface shadowed them. Pixels are now lit at the front-most solid surface (a front-weighted depth in the G-buffer).
+  2. Every splat had one depth across its whole shadow-map footprint, so tilted splats blocked the surface beside them. Shadow-map depth now follows each splat's own plane.
+  3. Shadow lookups used random per-pixel dithering and point samples. They now use a deterministic coverage cut-off, filtered (bilinear) comparisons on a 32-tap disk, and a tolerance that grows with the filter radius.
+  4. New per-light **Shadow → Bias** (metres, default 0.04) for real scans of other scales: raise it if lit surfaces show dark dots, lower it if shadows detach from their objects.
+- Viewport debug view *Baked* is now *Glow (sweep)*: the light the depth-sweep animator adds.
+- Tests: `tests/repro.mjs` renders each of these cases. The UI test has 41 checks, including the track menu being on top and the fade handle drag. Golden frames re-recorded for the new look.
 
 ### 0.2.0 – Mac app
 

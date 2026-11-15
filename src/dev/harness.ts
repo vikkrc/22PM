@@ -21,6 +21,8 @@ async function boot() {
     show, song, renderer,
     /** Render song time `sec` and return RGBA pixels as a plain array (also drawn to the canvas). */
     async frame(sec: number, width = 480, height = 270, opts: any = {}) {
+      // Read the current show from the harness object, so tests can swap or edit it between frames.
+      const { show, song } = window.harness;
       const state = evaluate(show, song, sec, null);
       const sub = opts.subFrames ? Array.from({ length: opts.subFrames - 1 }, (_, i) => evaluate(show, song, sec + ((i + 1) / opts.subFrames) / 60, null)) : undefined;
       const px = await renderer.renderToPixels(state, { width, height, shadowRes: 512, ...opts, subFrames: sub });

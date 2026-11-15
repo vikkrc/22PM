@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { hexToLinear, kelvinToLinear, linearToHex } from '../core/color';
 import { formatBBT, formatLength, parseBBT, parseLength, type TempoMap } from '../core/tempo';
 import { commit } from '../state/store';
@@ -187,26 +188,76 @@ export function Section({ title, children, right, defaultOpen = true }: { title:
   );
 }
 
-/** Small popover menu anchored to its trigger. */
-export function Menu({ trigger, items, className, title }: { trigger: ReactNode; items: ({ label: string; onClick: () => void; danger?: boolean; disabled?: boolean } | 'sep' | { heading: string })[]; className?: string; title?: string }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
+export type MenuItem = { label: string; onClick: () => void; danger?: boolean; disabled?: boolean } | 'sep' | { heading: string };
+
+/**
+ * A menu floating above the whole app. It is rendered at the end of <body> with fixed positioning, so
+ * no panel, scroll area or neighbouring row can clip or cover it. It opens below its anchor point and
+ * flips up or left when it would run off the window.
+ */
+export function FloatingMenu({ at, items, onClose }: { at: { x: number; y: number; flipY?: number; alignRight?: boolean }; items: MenuItem[]; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const w = el.offsetWidth, h = el.offsetHeight, m = 6;
+    let left = Math.min(at.alignRight ? at.x - w : at.x, window.innerWidth - w - m);
+    let top = at.y;
+    if (top + h > window.innerHeight - m) top = Math.max(m, (at.flipY ?? at.y) - h);
+    left = Math.max(m, left);
+    setPos({ left, top });
+    el.querySelector<HTMLButtonElement>('.menu-item:not(:disabled)')?.focus({ preventScroll: true });
+  }, [at.x, at.y, at.flipY, at.alignRight]);
   useEffect(() => {
-    if (!open) return;
-    const close = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    window.addEventListener('pointerdown', close, true);
-    return () => window.removeEventListener('pointerdown', close, true);
-  }, [open]);
+    const down = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      const btns = [...(ref.current?.querySelectorAll<HTMLButtonElement>('.menu-item:not(:disabled)') ?? [])];
+      const i = btns.indexOf(document.activeElement as HTMLButtonElement);
+      btns[(i + (e.key === 'ArrowDown' ? 1 : -1) + btns.length) % btns.length]?.focus();
+    };
+    const away = () => onClose();
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('keydown', key, true);
+    window.addEventListener('resize', away);
+    window.addEventListener('blur', away);
+    return () => {
+      window.removeEventListener('pointerdown', down, true);
+      window.removeEventListener('keydown', key, true);
+      window.removeEventListener('resize', away);
+      window.removeEventListener('blur', away);
+    };
+  }, [onClose]);
+  return createPortal(
+    <div ref={ref} className="menu floating" role="menu" style={pos ? pos : { left: at.x, top: at.y, visibility: 'hidden' }}
+      onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+      {items.map((it, i) => it === 'sep' ? <div key={i} className="menu-sep" /> : 'heading' in it ? <div key={i} className="menu-head">{it.heading}</div> : (
+        <button key={i} role="menuitem" className={`menu-item ${it.danger ? 'danger' : ''}`} disabled={it.disabled} onClick={() => { onClose(); it.onClick(); }}>{it.label}</button>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
+/** Button that opens a FloatingMenu below itself (right-aligned when `className` includes "right"). */
+export function Menu({ trigger, items, className, title }: { trigger: ReactNode; items: MenuItem[]; className?: string; title?: string }) {
+  const [at, setAt] = useState<{ x: number; y: number; flipY: number; alignRight: boolean } | null>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setAt(null), []);
+  const toggle = () => {
+    if (at) { setAt(null); return; }
+    const r = btn.current!.getBoundingClientRect();
+    const right = !!className?.includes('right');
+    setAt({ x: right ? r.right : r.left, y: r.bottom + 4, flipY: r.top - 4, alignRight: right });
+  };
   return (
-    <span className={`menu-wrap ${className ?? ''}`} ref={ref}>
-      <button className={`btn ${open ? 'on' : ''}`} title={title} onClick={() => setOpen(!open)}>{trigger}</button>
-      {open && (
-        <div className="menu" role="menu">
-          {items.map((it, i) => it === 'sep' ? <div key={i} className="menu-sep" /> : 'heading' in it ? <div key={i} className="menu-head">{it.heading}</div> : (
-            <button key={i} role="menuitem" className={`menu-item ${it.danger ? 'danger' : ''}`} disabled={it.disabled} onClick={() => { setOpen(false); it.onClick(); }}>{it.label}</button>
-          ))}
-        </div>
-      )}
+    <span className={`menu-wrap ${className ?? ''}`}>
+      <button ref={btn} className={`btn ${at ? 'on' : ''}`} title={title} aria-haspopup="menu" aria-expanded={!!at}
+        onPointerDown={(e) => { if (at) e.stopPropagation(); }} onClick={toggle}>{trigger}</button>
+      {at && <FloatingMenu at={at} items={items} onClose={close} />}
     </span>
   );
 }

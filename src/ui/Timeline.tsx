@@ -8,7 +8,7 @@ import { analysisFor, importAudioFile } from '../state/runtime';
 import { commit, getState, select, setUi, useSong, useStore } from '../state/store';
 import { transport } from '../state/transport';
 import { addClip, addSection, addTrack, deleteTrack, moveClip, moveKeys, patchClip, patchTrack, toggleKeys } from '../state/actions';
-import { Menu, Select, Text } from './widgets';
+import { FloatingMenu, Menu, Select, Text } from './widgets';
 
 const HEAD_W = 184;
 
@@ -185,12 +185,12 @@ function ClipView({ clip, track, song }: { clip: Clip; track: Track; song: Song 
       {foW > 0 && <svg className="fade" style={{ right: 0, width: foW }} viewBox="0 0 10 10" preserveAspectRatio="none"><path d="M0 0H10V10Z" /></svg>}
       <span className="clip-name">{clip.name}{mods ? <span className="clip-mod" title="Has modulators"> ∿</span> : null}</span>
       {keyTimes.map((t) => t >= 0 && t <= clip.length ? <i key={t} className="clip-key" style={{ left: t * ppb }} /> : null)}
-      {w > 28 && <>
-        <span className="fade-h in" style={{ left: Math.min(fiW, w - 12) }} onPointerDown={(e) => startDrag(e, 'fi')} title="Drag: fade in" />
-        <span className="fade-h out" style={{ right: Math.min(foW, w - 12) }} onPointerDown={(e) => startDrag(e, 'fo')} title="Drag: fade out" />
+      <span className="clip-edge l" onPointerDown={(e) => startDrag(e, 'l')} title="Drag: trim start" />
+      <span className="clip-edge r" onPointerDown={(e) => startDrag(e, 'r')} title="Drag: trim end" />
+      {w > 24 && <>
+        <span className="fade-h in" style={{ left: Math.max(0, Math.min(fiW - 5, w - 22)) }} onPointerDown={(e) => startDrag(e, 'fi')} title={`Fade in: ${+clip.fadeIn.toFixed(3)} beats · drag`} />
+        <span className="fade-h out" style={{ right: Math.max(0, Math.min(foW - 5, w - 22)) }} onPointerDown={(e) => startDrag(e, 'fo')} title={`Fade out: ${+clip.fadeOut.toFixed(3)} beats · drag`} />
       </>}
-      <span className="clip-edge l" onPointerDown={(e) => startDrag(e, 'l')} />
-      <span className="clip-edge r" onPointerDown={(e) => startDrag(e, 'r')} />
     </div>
   );
 }
@@ -201,7 +201,7 @@ function kindItems(type: TrackType, onPick: (k: Kind) => void) {
 
 function TrackRow({ track, song }: { track: Track; song: Song }) {
   const selected = useStore((s) => s.ui.selection.type === 'track' && s.ui.selection.id === track.id);
-  const [menu, setMenu] = useState<{ x: number; beat: number } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; beat: number } | null>(null);
   const kinds = kindsForTrack(track.type);
   const addAt = (kind: Kind, beat: number) => addClip(track.id, kind, snapBeat(song.tempo, beat, getState().ui.snap === 'off' ? '1' : getState().ui.snap));
   return (
@@ -217,15 +217,14 @@ function TrackRow({ track, song }: { track: Track; song: Song }) {
         onDoubleClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           const beat = getState().ui.scrollBeat + (e.clientX - r.left) / getState().ui.pxPerBeat;
-          if (kinds.length === 1) addAt(kinds[0].kind, beat); else setMenu({ x: e.clientX - r.left, beat });
+          if (kinds.length === 1) addAt(kinds[0].kind, beat); else setMenu({ x: e.clientX, y: e.clientY, beat });
         }}
         onPointerDown={(e) => { if (e.target === e.currentTarget) { select({ type: 'none' }); setMenu(null); } }}>
         {track.clips.map((c) => <ClipView key={c.id} clip={c} track={track} song={song} />)}
         {track.clips.length === 0 && !menu && <span className="lane-hint">Double-click to add a {kinds.length === 1 ? kinds[0].label.toLowerCase() : TRACK_LABEL[track.type].toLowerCase()} clip</span>}
         {menu && (
-          <div className="menu inline" style={{ left: menu.x }} onPointerDown={(e) => e.stopPropagation()}>
-            {kinds.map((k) => <button key={k.kind} className="menu-item" onClick={() => { addAt(k.kind, menu.beat); setMenu(null); }}>{k.label}</button>)}
-          </div>
+          <FloatingMenu at={{ x: menu.x, y: menu.y + 2, flipY: menu.y - 2 }} onClose={() => setMenu(null)}
+            items={[{ heading: `Add at ${formatBBT(song.tempo, snapBeat(song.tempo, menu.beat, getState().ui.snap === 'off' ? '1' : getState().ui.snap))}` }, ...kinds.map((k) => ({ label: k.label, onClick: () => addAt(k.kind, menu.beat) }))]} />
         )}
       </div>
     </div>

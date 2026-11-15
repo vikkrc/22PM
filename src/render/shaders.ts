@@ -119,6 +119,10 @@ struct VOut {
   @location(3) baked: vec4f,
   @location(4) depth: f32,
   @location(5) @interpolate(flat) seed: u32,
+  /** Change of view depth per unit of uv: the splat's own plane, so depth is not flat across its footprint. */
+  @location(6) @interpolate(flat) slope: vec2f,
+  /** proj[2][2], proj[3][2] and the ortho flag, to turn a view depth back into a depth-buffer value. */
+  @location(7) @interpolate(flat) zc: vec3f,
 }
 
 fn quatMat(q: vec4f) -> mat3x3f {
@@ -194,15 +198,34 @@ fn quatMat(q: vec4f) -> mat3x3f {
   out.pos = vec4f(clip.xy + off * 2.0 / view.vp.xy * clip.w, clip.z, clip.w);
   out.uv = corner * k;
 
+  // Depth across the footprint follows the plane through the centre with the splat's normal.
+  // Slope is clamped so splats seen edge-on do not produce extreme depths.
+  var nv = W * nrm;
+  if (abs(nv.z) < 1e-3) { nv.z = select(-1e-3, 1e-3, nv.z >= 0.0); }
+  var gxy = nv.xy / nv.z;
+  let gl = length(gxy);
+  if (gl > SLOPE_MAX) { gxy *= SLOPE_MAX / gl; }
+  var pixToView = 2.0 / view.vp.xy / vec2f(view.proj[0][0], view.proj[1][1]);
+  if (!ortho) { pixToView *= dist; }
+  out.slope = vec2f(dot(v1 * pixToView, gxy), dot(v2 * pixToView, gxy));
+  out.zc = vec3f(view.proj[2][2], view.proj[3][2], select(0.0, 1.0, ortho));
+
+  // Surface colour: between the de-lit albedo (0) and the scan's original baked colours (1).
+  // Either way it is only seen where the virtual lights reach it, so no light means black.
   let deLight = clamp(pow(inst.p1.x / max(B.w, 1e-3), inst.p0.x), 0.2, 5.0);
   let bakedMix = inst.p0.y;
-  out.albedo = vec4f(D.rgb * deLight * g.colMul, g.alpha);
+  out.albedo = vec4f(mix(D.rgb * deLight, D.rgb, bakedMix) * g.colMul, g.alpha);
   out.normal = nrm * inst.p1.y;
-  out.baked = vec4f(D.rgb * g.colMul * bakedMix + g.emis, 1.0 - bakedMix);
+  // Glow from animators (depth sweep brighten / tint): the only light the splats emit themselves.
+  out.baked = vec4f(g.emis, 0.0);
   out.depth = dist;
   out.seed = idx;
   return out;
 }
+
+const SLOPE_MAX = 1.5;
+const FRONT_ALPHA = 0.3;
+fn planeDepth(in: VOut) -> f32 { return max(in.depth + dot(in.uv, in.slope), 0.01); }
 
 struct GOut { @location(0) albedo: vec4f, @location(1) normal: vec4f, @location(2) baked: vec4f, @location(3) aux: vec4f }
 
@@ -215,18 +238,25 @@ struct GOut { @location(0) albedo: vec4f, @location(1) normal: vec4f, @location(
   o.albedo = vec4f(in.albedo.rgb * a, a);
   o.normal = vec4f(in.normal * a, a);
   o.baked = vec4f(in.baked.rgb * a, a);
-  o.aux = vec4f(in.depth * a, in.baked.a * a, 0.0, a);
+  // Front surface depth. Splats are drawn back to front with "over" blending; here a fragment's weight
+  // saturates at FRONT_ALPHA, so a reasonably solid splat replaces what is behind it outright. The result
+  // is the depth of the front-most surface rather than an average through the object, which would put
+  // thinly covered points inside it, where its own front shadows them.
+  let w = clamp(a / FRONT_ALPHA, 0.0, 1.0);
+  o.aux = vec4f(planeDepth(in) * w, 0.0, 0.0, w);
   return o;
 }
 
-// Shadow pass: stochastic alpha test, so semi-transparent Gaussians cast proportionally lighter shadows.
-@fragment fn fsShadow(in: VOut) {
+// Shadow pass: each Gaussian occludes where it is reasonably opaque. A fixed threshold (no per-pixel
+// dithering) keeps shadow edges clean; the filtering in the lighting pass softens them.
+@fragment fn fsShadow(in: VOut) -> @builtin(frag_depth) f32 {
   let d2 = dot(in.uv, in.uv);
   if (d2 > 8.0) { discard; }
   let a = in.albedo.a * exp(-0.5 * d2);
-  let px = vec2u(in.pos.xy);
-  let h = hash11(px.x * 1973u + px.y * 9277u + in.seed * 26699u);
-  if (a < mix(0.12, 0.5, h)) { discard; }
+  if (a < 0.35) { discard; }
+  let d = planeDepth(in);
+  let w = select(d, 1.0, in.zc.z > 0.5);
+  return clamp((-in.zc.x * d + in.zc.y) / w, 0.0, 1.0);
 }
 `;
 
@@ -249,6 +279,7 @@ struct Lighting {
 @group(0) @binding(4) var tAux: texture_2d<f32>;
 @group(0) @binding(5) var tShadow: texture_depth_2d_array;
 @group(0) @binding(6) var sShadow: sampler;
+@group(0) @binding(7) var sShadowCmp: sampler_comparison;
 
 @vertex fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
   return vec4f(f32((vi << 1u) & 2u) * 2.0 - 1.0, f32(vi & 2u) * 2.0 - 1.0, 0.0, 1.0);
@@ -267,9 +298,24 @@ fn linDepth(z: f32, p: vec4f) -> f32 {
 
 fn ign(px: vec2f) -> f32 { return fract(52.9829189 * fract(dot(px, vec2f(0.06711056, 0.00583715)))); }
 
-// PCSS: blocker search, then a PCF kernel sized by the estimated penumbra. lightSize is a world radius
-// (or tan of the angular radius for the sun).
-fn shadow(layer: i32, wpos: vec3f, toLight: vec3f, lightSize: f32, px: vec2f) -> f32 {
+// Depth in the shadow map's own 0..1 units for a linear distance from the light.
+fn ndcDepth(d: f32, p: vec4f) -> f32 {
+  if (p.z > 0.5) { return (d - p.x) / (p.y - p.x); }
+  return p.y * (d - p.x) / (d * (p.y - p.x));
+}
+
+// 32-tap Vogel disk: even coverage, so one rotation per pixel is enough and noise stays low.
+fn vogel(i: i32, n: i32, ang: f32) -> vec2f {
+  let r = sqrt((f32(i) + 0.5) / f32(n));
+  let t = f32(i) * 2.39996323 + ang;
+  return vec2f(cos(t), sin(t)) * r;
+}
+
+// Soft shadows: blocker search, then filtered depth comparisons (bilinear PCF) over a disk sized by the
+// estimated penumbra. Splats are fuzzy and their footprints in the shadow map are depth-flat, so the
+// comparison tolerance grows with the distance of each tap from the centre (receiver-plane bias).
+// lightSize is a world radius (for the sun: tan of the angular radius); bias is the light's shadow bias in metres.
+fn shadow(layer: i32, wpos: vec3f, n: vec3f, toLight: vec3f, lightSize: f32, bias: f32, px: vec2f) -> f32 {
   let prm = L.shadowParam[layer];
   let res = f32(textureDimensions(tShadow).x);
   let sp0 = L.shadowMat[layer] * vec4f(wpos, 1.0);
@@ -277,39 +323,44 @@ fn shadow(layer: i32, wpos: vec3f, toLight: vec3f, lightSize: f32, px: vec2f) ->
   let d0 = linDepth(clamp(sp0.z / sp0.w, 0.0, 1.0), prm);
   var texelWorld = 2.0 * prm.w / res;
   if (prm.z < 0.5) { texelWorld *= d0; }
-  let biased = wpos + toLight * (0.015 + texelWorld * 2.5);
-  let sp = L.shadowMat[layer] * vec4f(biased, 1.0);
+  // Normal offset (scaled by how grazing the light is) plus a push towards the light.
+  let ndl = clamp(dot(n, toLight), 0.0, 1.0);
+  let offs = n * (texelWorld * 2.0 + bias) * (1.0 - ndl * 0.6) + toLight * (texelWorld + bias);
+  let sp = L.shadowMat[layer] * vec4f(wpos + offs, 1.0);
   let ndc = sp.xyz / sp.w;
   let uv = vec2f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
   if (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0)) || ndc.z > 1.0) { return 1.0; }
   let zr = linDepth(ndc.z, prm);
-  let ang = ign(px) * 6.28318;
-  let rot = mat2x2f(cos(ang), sin(ang), -sin(ang), cos(ang));
   var worldToUv = 1.0 / (2.0 * prm.w);
   if (prm.z < 0.5) { worldToUv /= zr; }
   let texel = 1.0 / res;
-  // Blocker search
+  let ang = ign(px) * 6.28318;
+
+  // Blocker search: average depth of what is in front of us, within the light's footprint.
   var searchR = lightSize * worldToUv;
   if (prm.z > 0.5) { searchR = lightSize * 4.0 * worldToUv; }
-  searchR = clamp(searchR, texel * 2.0, 0.06);
+  searchR = clamp(searchR, texel * 3.0, 0.06);
   var zb = 0.0; var nb = 0.0;
-  for (var i = 0; i < 8; i++) {
-    let o = rot * POISSON[i * 2] * searchR;
+  for (var i = 0; i < 12; i++) {
+    let o = vogel(i, 12, ang) * searchR;
     let z = linDepth(textureSampleLevel(tShadow, sShadow, uv + o, layer, 0), prm);
-    if (z < zr) { zb += z; nb += 1.0; }
+    let tol = length(o) / worldToUv + bias * 0.5;
+    if (z < zr - tol) { zb += z; nb += 1.0; }
   }
   if (nb < 0.5) { return 1.0; }
   zb /= nb;
+
+  // Penumbra width from similar triangles (PCSS).
   var pen = 0.0;
   if (prm.z > 0.5) { pen = (zr - zb) * lightSize; } else { pen = lightSize * (zr - zb) / max(zb, 0.01); }
-  let r = clamp(pen * worldToUv, texel * 1.25, 0.08);
+  let r = clamp(pen * worldToUv, texel * 1.5, 0.08);
   var lit = 0.0;
-  for (var i = 0; i < 16; i++) {
-    let o = rot * POISSON[i] * r;
-    let z = linDepth(textureSampleLevel(tShadow, sShadow, uv + o, layer, 0), prm);
-    lit += select(0.0, 1.0, z >= zr);
+  for (var i = 0; i < 32; i++) {
+    let o = vogel(i, 32, ang) * r;
+    let tol = length(o) / worldToUv;
+    lit += textureSampleCompareLevel(tShadow, sShadowCmp, uv + o, layer, ndcDepth(max(zr - tol, prm.x), prm));
   }
-  return lit / 16.0;
+  return lit / 32.0;
 }
 
 fn cubeFace(v: vec3f) -> i32 {
@@ -329,10 +380,9 @@ fn cubeFace(v: vec3f) -> i32 {
   let inv = 1.0 / cov;
   let albedo = alb.rgb * inv;
   let nRaw = textureLoad(tNormal, px, 0).xyz * inv;
-  let baked = textureLoad(tBaked, px, 0).rgb * inv;
-  let aux = textureLoad(tAux, px, 0) * inv;
-  let depth = aux.x;
-  let litW = aux.y;
+  let glow = textureLoad(tBaked, px, 0).rgb * inv;
+  let aux = textureLoad(tAux, px, 0);
+  let depth = aux.x / max(aux.a, 1e-4);
   let nLen = clamp(length(nRaw), 0.0, 1.0);
   let n = nRaw / max(length(nRaw), 1e-5);
 
@@ -345,6 +395,7 @@ fn cubeFace(v: vec3f) -> i32 {
   var diffuse = mix(L.ground.rgb, L.sky.rgb, n.y * 0.5 * nLen + 0.5) * L.sky.a;
   var spec = vec3f(0.0);
   var shadowOnly = 0.0;
+  var firstShadow = -1.0;
   let count = i32(L.background.a);
   for (var i = 0; i < count; i++) {
     let lt = L.lights[i];
@@ -390,7 +441,7 @@ fn cubeFace(v: vec3f) -> i32 {
     if (layer0 >= 0) {
       var layer = layer0;
       if (kind == 0) { layer += cubeFace(-toL); }
-      sh = shadow(layer, wpos, toL, lightSize, frag.xy);
+      sh = shadow(layer, wpos, n * nLen, toL, lightSize, lt.extra.y, frag.xy);
     }
     // Wrapped diffuse; short (noisy) normals fall back towards unshaded so blotches soften.
     let ndl = mix(1.0, clamp((dot(n, toL) + 0.15) / 1.15, 0.0, 1.0), nLen);
@@ -399,15 +450,16 @@ fn cubeFace(v: vec3f) -> i32 {
     let H = normalize(toL + V);
     spec += radiance * pow(max(dot(n, H), 0.0), 36.0) * lt.color.a * nLen * ndl;
     shadowOnly += sh * atten * ndl;
+    if (firstShadow < 0.0 && layer0 >= 0) { firstShadow = sh; }
   }
 
-  var lit = albedo * diffuse + spec;
-  var color = lit * litW + baked;
+  var color = albedo * diffuse + spec + glow;
   if (debug == 1) { color = albedo; }
   else if (debug == 2) { color = n * 0.5 + 0.5; }
-  else if (debug == 3) { color = baked / max(1.0 - litW, 0.05) * select(1.0, 0.0, litW > 0.999) + select(vec3f(0.0), albedo, litW > 0.999); }
+  else if (debug == 3) { color = glow; }
   else if (debug == 4) { color = vec3f(fract(depth * 0.25), depth * 0.05, depth * 0.01); }
   else if (debug == 5) { color = diffuse + spec; }
+  else if (debug == 6) { color = select(vec3f(max(firstShadow, 0.0)), vec3f(0.0, 0.0, 1.0), firstShadow < 0.0); }
   return vec4f(mix(bg, color, clamp(cov, 0.0, 1.0)), 1.0);
 }
 `;

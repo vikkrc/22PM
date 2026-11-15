@@ -27,6 +27,8 @@ export interface LightState {
   disc: boolean;
   castShadows: boolean;
   softness: number;
+  /** World-space shadow bias in metres. */
+  bias: number;
   specular: number;
 }
 
@@ -66,6 +68,16 @@ export function clipFade(c: Clip, beat: number): number {
   return Math.min(fi, fo);
 }
 
+/** Smooth 0..1 ease used for crossfades: no sudden start or stop. */
+export const easeFade = (f: number) => f * f * (3 - 2 * f);
+
+/**
+ * Light fades follow perceived brightness, not linear intensity. A linear fade of light looks almost
+ * unchanged for most of its length and then drops to black at the very end (display gamma and tone
+ * mapping both compress the low end). Raising the eased fade to ~2.2 makes the fade look even.
+ */
+export const lightFade = (f: number) => Math.pow(easeFade(f), 2.2);
+
 export const clipActive = (c: Clip, beat: number) => !c.muted && beat >= c.start && beat < c.start + c.length;
 
 /** v(t) = clamp(base-or-keyframes + modulators). Keyframes, when present, replace the base value. */
@@ -94,6 +106,7 @@ function mix(a: Record<string, number>, b: Record<string, number>, w: number, ki
 }
 
 function lightFromParams(c: Clip, p: Record<string, number>, fade: number): LightState {
+  const k = fade >= 1 ? 1 : lightFade(fade);
   const type = c.kind.split('.')[1] as LightType;
   const pos: Vec3 = type === 'sun' ? [0, 0, 0] : vec(p, 'pos');
   let dir: Vec3 = [0, -1, 0];
@@ -103,12 +116,12 @@ function lightFromParams(c: Clip, p: Record<string, number>, fade: number): Ligh
     dir = v3.len(d) > 1e-6 ? v3.norm(d) : [0, -1, 0];
   }
   return {
-    id: c.id, type, color: col(p, 'color'), intensity: p.intensity * fade, pos, dir,
+    id: c.id, type, color: col(p, 'color'), intensity: p.intensity * k, pos, dir,
     range: p.range ?? 1e6,
     radius: type === 'sun' ? p.angularSize : (p.radius ?? 0),
     cone: p.cone ?? 0, penumbra: p.penumbra ?? 0,
     width: p.width ?? 0, height: p.height ?? 0, disc: (p.shape ?? 0) === 1,
-    castShadows: p.castShadows > 0.5, softness: p.shadowSoftness, specular: p.specular,
+    castShadows: p.castShadows > 0.5, softness: p.shadowSoftness, bias: p.shadowBias ?? 0.04, specular: p.specular,
   };
 }
 
@@ -133,11 +146,12 @@ export function evaluate(show: Show, song: Song, sec: number, analysis: Analysis
       if (!clipActive(c, beat)) continue;
       const p = evalClipParams(c, ctx);
       const fade = clipFade(c, beat);
-      if (c.kind === 'camera') cam = mix(cam, p, fade, 'camera');
-      else if (c.kind === 'global') glob = mix(glob, p, fade, 'global');
-      else if (c.kind === 'post') post = mix(post, p, fade, 'post');
+      const eased = easeFade(fade);
+      if (c.kind === 'camera') cam = mix(cam, p, eased, 'camera');
+      else if (c.kind === 'global') glob = mix(glob, p, eased, 'global');
+      else if (c.kind === 'post') post = mix(post, p, eased, 'post');
       else if (c.kind.startsWith('light.')) lights.push(lightFromParams(c, p, fade));
-      else animators.push({ id: c.id, kind: c.kind, p, time: beatToSec(song.tempo, beat) - beatToSec(song.tempo, c.start), fade, targets: c.targets ?? [] });
+      else animators.push({ id: c.id, kind: c.kind, p, time: beatToSec(song.tempo, beat) - beatToSec(song.tempo, c.start), fade: eased, targets: c.targets ?? [] });
     }
   }
   // Stable order regardless of track iteration details.

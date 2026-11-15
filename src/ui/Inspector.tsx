@@ -414,7 +414,7 @@ function SplatInspector({ inst }: { inst: SplatInstance }) {
       </Section>
       <Section title="Relighting">
         <Row label="De-light" title="Divides out the scan's low-frequency baked brightness to get a flatter albedo"><Num value={inst.deLight} step={0.01} min={0} max={1.5} soft={[0, 1]} onChange={(v) => p({ deLight: v }, 'dl')} /></Row>
-        <Row label="Baked mix" title="0 = fully relit by the virtual lights, 1 = the scan's original baked look"><Num value={inst.bakedMix} step={0.01} min={0} max={1} soft={[0, 1]} onChange={(v) => p({ bakedMix: v }, 'bm')} /></Row>
+        <Row label="Baked colour" title="Surface colour from 0 = de-lit to 1 = the scan's original colours (with its baked shading). Either way only the virtual lights show it, so with no light the splat stays black."><Num value={inst.bakedMix} step={0.01} min={0} max={1} soft={[0, 1]} onChange={(v) => p({ bakedMix: v }, 'bm')} /></Row>
         <Row label="Opacity"><Num value={inst.opacity} step={0.01} min={0} max={1} soft={[0, 1]} onChange={(v) => p({ opacity: v }, 'op')} /></Row>
         <Row label="Normals" title="Which way surfaces face. 'Face viewer' is the safe default for scans without camera poses">
           <Select value={inst.normalMode} options={[{ value: 'view', label: 'Face viewer' }, { value: 'outward', label: 'Outward (objects)' }, { value: 'inward', label: 'Inward (rooms)' }]} onChange={(v) => p({ normalMode: v })} />

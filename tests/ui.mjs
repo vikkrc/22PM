@@ -26,12 +26,36 @@ const drag = async (x0, y0, x1, y1) => { await page.mouse.move(x0, y0); await pa
 // 1. Add clips by double-clicking lanes.
 let lane = await box('[data-track="trk_5"]');
 await page.mouse.dblclick(lane.x + 300, lane.y + 15);
-await page.click('.menu.inline .menu-item:has-text("Post")');
+check('lane menu floats above the timeline', await page.locator('.menu.floating').count() === 1 && await page.locator('.menu.floating .menu-item:has-text("Post")').isVisible());
+await page.click('.menu.floating .menu-item:has-text("Post")');
 let all = await clips();
 const post = all.find((c) => c.kind === 'post');
 check('double-click + menu adds a post clip', !!post && post.track === 'trk_5', post && `start ${post.start}`);
 check('new clip is selected', (await ui()).selection.id === post?.id);
 check('clip snapped to the beat grid', post && Number.isInteger(post.start));
+
+// 1b. Track "+" menu (the reported case: menu hidden behind the rows below it).
+await page.locator('[data-track="trk_2"]').locator('xpath=..').locator('.tl-head .menu-wrap button').click();
+const topmost = await page.evaluate(() => [...document.querySelectorAll('.menu.floating .menu-item')].map((b) => {
+  const r = b.getBoundingClientRect();
+  const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  return { label: b.textContent, onTop: hit === b || b.contains(hit) };
+}));
+check('track + menu: every item is visible and on top', topmost.length >= 4 && topmost.every((t) => t.onTop), JSON.stringify(topmost.filter((t) => !t.onTop)));
+await page.keyboard.press('Escape');
+check('Escape closes the menu', await page.locator('.menu.floating').count() === 0);
+
+// 1c. Fade-out handle can be grabbed and dragged.
+await page.click('.clip:has-text("Low point")');
+const lp0 = await clip('clip_point');
+let cb = await box('.clip:has-text("Low point")');
+const fo = page.locator('.clip:has-text("Low point") .fade-h.out');
+const fb = await fo.boundingBox();
+await drag(fb.x + fb.width / 2, fb.y + fb.height / 2, fb.x + fb.width / 2 - 48, fb.y + fb.height / 2);
+const lp1 = await clip('clip_point');
+check('dragging the fade-out handle sets the fade', lp1.fadeOut === lp0.fadeOut + 2 && lp1.length === lp0.length, `${lp0.fadeOut} → ${lp1.fadeOut} beats`);
+await page.keyboard.press('Control+z');
+void cb;
 
 // 2. Move and trim a clip with the mouse.
 const sw0 = await clip('clip_sweep');
@@ -140,7 +164,7 @@ check('B toggles blackout', await page.locator('.safety .btn.on.danger').count()
 await page.keyboard.press('b');
 await page.click('.seg button:text-is("MIDI Timecode")');
 await page.click('.btn:has-text("Send test timecode")');
-await page.waitForTimeout(1500);
+await page.waitForFunction(() => document.querySelector('.status-pill')?.textContent === 'Locked' && window.__22pm.transport.sec > 0.5, null, { timeout: 30000 }).catch(() => {});
 const pill = await page.locator('.status-pill').textContent();
 const tsec = await page.evaluate(() => window.__22pm.transport.sec);
 check('timecode chase locks and drives the position', pill === 'Locked' && tsec > 0.5, `${pill}, ${tsec.toFixed(2)} s`);

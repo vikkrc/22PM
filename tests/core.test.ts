@@ -286,3 +286,18 @@ describe('timecode', () => {
     expect(locateSong([3600, 7200], [200, 200], 5000)).toBeNull();
   });
 });
+
+describe('fades', () => {
+  it('light fades are eased and perceptual', async () => {
+    const { lightFade, easeFade } = await import('../src/core/evaluate');
+    expect(lightFade(0)).toBe(0);
+    expect(lightFade(1)).toBe(1);
+    expect(easeFade(0.5)).toBeCloseTo(0.5);
+    // Halfway through, intensity is low enough to look about half as bright.
+    expect(lightFade(0.5)).toBeCloseTo(Math.pow(0.5, 2.2), 6);
+    // Near the end the light is already almost gone, so the clip end is not a visible cut.
+    expect(lightFade(0.1)).toBeLessThan(0.003);
+    let prev = 0;
+    for (let f = 0; f <= 1.0001; f += 0.01) { const v = lightFade(Math.min(1, f)); expect(v).toBeGreaterThanOrEqual(prev); prev = v; }
+  });
+});

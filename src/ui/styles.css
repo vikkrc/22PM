@@ -172,8 +172,6 @@ kbd { border: 1px solid var(--line-2); border-bottom-width: 2px; }
   position: absolute; top: calc(100% + 4px); left: 0; z-index: 50; min-width: 170px; padding: 4px; background: var(--raised);
   border: 1px solid var(--line-2); border-radius: 7px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
 }
-.menu-wrap.right .menu { left: auto; right: 0; }
-.menu.inline { top: 2px; }
 .menu-item { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 5px 9px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
 .menu-item:hover:not(:disabled) { background: var(--raised-2); }
 .menu-item:disabled { opacity: 0.4; cursor: default; }
@@ -352,13 +350,16 @@ kbd { border: 1px solid var(--line-2); border-bottom-width: 2px; }
 .clip.muted { opacity: 0.4; background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(0, 0, 0, 0.35) 5px 10px); }
 .clip-name { padding: 0 9px; font-size: 11px; white-space: nowrap; color: #fff; position: relative; pointer-events: none; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5); }
 .clip-mod { color: var(--modifier); }
-.clip-edge { position: absolute; top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
+.clip-edge { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 2; }
 .clip-edge.l { left: 0; } .clip-edge.r { right: 0; }
 .clip .fade { position: absolute; top: 0; height: 100%; pointer-events: none; }
 .clip .fade path { fill: rgba(0, 0, 0, 0.5); }
-.fade-h { position: absolute; top: 0; width: 9px; height: 9px; background: #fff; opacity: 0; cursor: ew-resize; border-radius: 0 0 50% 50%; transform: translateX(-50%); }
-.fade-h.out { transform: translateX(50%); }
-.clip:hover .fade-h, .clip.sel .fade-h { opacity: 0.75; }
+.fade-h {
+  position: absolute; top: 0; width: 10px; height: 10px; z-index: 3; cursor: ew-resize;
+  background: #fff; opacity: 0; border-radius: 0 0 5px 5px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+.clip:hover .fade-h, .clip.sel .fade-h { opacity: 0.85; }
+.fade-h:hover { opacity: 1 !important; transform: scale(1.2); }
 .clip-key { position: absolute; bottom: 2px; width: 5px; height: 5px; background: #fff; transform: translateX(-50%) rotate(45deg); opacity: 0.85; pointer-events: none; }
 .keys-title { min-height: 22px; background: var(--bg); }
 .keys-title .tl-head { background: var(--bg); padding-left: 12px; width: auto; border-right: 0; }
@@ -454,3 +455,7 @@ kbd { border: 1px solid var(--line-2); border-bottom-width: 2px; }
 body.desktop.os-darwin .topbar { padding-left: 84px; -webkit-app-region: drag; }
 body.desktop .topbar button, body.desktop .topbar select, body.desktop .topbar input, body.desktop .topbar .pos,
 body.desktop .topbar .menu, body.desktop .topbar .jobs { -webkit-app-region: no-drag; }
+
+/* Floating menus live at the end of <body>, above every panel. */
+.menu.floating { position: fixed; top: 0; left: 0; z-index: 1000; max-height: calc(100vh - 12px); overflow-y: auto; }
+.menu-item:focus-visible { outline: none; background: var(--raised-2); }

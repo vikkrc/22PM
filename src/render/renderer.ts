@@ -96,6 +96,7 @@ export class Renderer {
   private lineLayout!: GPUBindGroupLayout;
   private linSampler!: GPUSampler;
   private nearSampler!: GPUSampler;
+  private cmpSampler!: GPUSampler;
 
   private sceneUbo!: GPUBuffer;
   private sceneData = new Float32Array(680);
@@ -196,7 +197,12 @@ export class Renderer {
     this.gPipe = d.createRenderPipeline({
       label: 'gbuffer', layout: splatPL,
       vertex: { module: splatModule, entryPoint: 'vs' },
-      fragment: { module: splatModule, entryPoint: 'fsG', targets: [0, 1, 2, 3].map(() => ({ format: HDR, blend: over })) },
+      fragment: {
+        module: splatModule, entryPoint: 'fsG',
+        // Premultiplied "over" on every target. Each target's alpha must be the weight its colour was
+        // multiplied by, since that alpha is what scales down the value already there.
+        targets: [0, 1, 2, 3].map(() => ({ format: HDR, blend: over })),
+      },
       primitive: { topology: 'triangle-strip' },
     });
     this.shadowPipe = d.createRenderPipeline({
@@ -234,6 +240,7 @@ export class Renderer {
     this.lineLayout = d.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }] });
 
     this.linSampler = d.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' });
+    this.cmpSampler = d.createSampler({ compare: 'less-equal', magFilter: 'linear', minFilter: 'linear', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' });
     this.nearSampler = d.createSampler({ magFilter: 'nearest', minFilter: 'nearest', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' });
 
     const ubo = (size: number) => d.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -708,7 +715,7 @@ export class Renderer {
       const size = l.type === 'sun' ? Math.tan((l.radius * 0.5 + l.softness * 4) * DEG)
         : l.type === 'area' ? Math.max(l.width, l.height) * 0.5 * (0.3 + l.softness)
         : l.radius + l.softness * 0.4;
-      ld.set([outer, inner, size, 0, l.width, l.height, l.disc ? 1 : 0, -1, l.radius, 0, 0, 0], o + 12);
+      ld.set([outer, inner, size, 0, l.width, l.height, l.disc ? 1 : 0, -1, l.radius, l.bias, 0, 0], o + 12);
       if (!l.castShadows || !this.count || shadowLights >= maxShadow) return;
       const views = this.shadowViews(l, sphere);
       if (layer + views.length > MAX_SHADOW_LAYERS) return;
@@ -760,6 +767,7 @@ export class Renderer {
           ...this.gViews.map((v, i) => ({ binding: 1 + i, resource: v })),
           { binding: 5, resource: this.shadowArrayView },
           { binding: 6, resource: this.nearSampler },
+          { binding: 7, resource: this.cmpSampler },
         ],
       });
     }
@@ -811,9 +819,10 @@ export class Renderer {
     const px = new Uint16Array(buf.getMappedRange().slice(0, 8));
     buf.unmap();
     buf.destroy();
-    const cov = halfToFloat(px[3]);
-    if (!(cov > 0.3)) return null;
-    const depth = halfToFloat(px[0]) / cov;
+    // aux target: front-weighted depth, premultiplied by its weight in w.
+    const w = halfToFloat(px[3]);
+    if (!(w > 0.5)) return null;
+    const depth = halfToFloat(px[0]) / w;
     const cam = this.lastCam;
     const nx = u * 2 - 1, ny = 1 - v * 2;
     return transformPoint(invert(cam.view), [(nx * depth) / cam.proj[0], (ny * depth) / cam.proj[5], -depth]);
