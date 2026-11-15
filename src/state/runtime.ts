@@ -251,7 +251,7 @@ export async function boot(): Promise<void> {
   if (LITE) setUi({ previewScale: 0.5 });
 
   // Handle for tests and console debugging.
-  (window as any).__22pm = { getState, transport, splats, getRenderer, update, select, setUi };
+  (window as any).__22pm = { getState, transport, splats, getRenderer, update, select, setUi, analysisFor, audioBuffers, importSplatFile, importSplatVersion, syncScene };
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let lastShow = getState().show;

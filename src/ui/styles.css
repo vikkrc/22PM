@@ -154,9 +154,9 @@ kbd { border: 1px solid var(--line-2); border-bottom-width: 2px; }
 .num.axis-y .num-label { color: var(--y); }
 .num.axis-z .num-label { color: var(--z); }
 
-.toggle { display: inline-flex; align-items: center; gap: 7px; border: 0; background: none; padding: 0; cursor: pointer; }
+.toggle { display: inline-flex; align-items: center; gap: 7px; border: 0; background: none; padding: 0; cursor: pointer; position: relative; }
 .toggle::before { content: ''; width: 26px; height: 14px; border-radius: 7px; background: var(--raised-2); border: 1px solid var(--line-2); transition: background 0.12s; }
-.toggle-knob { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--text-3); margin-left: 3px; transition: transform 0.12s, background 0.12s; }
+.toggle-knob { position: absolute; left: 0; top: 50%; margin-top: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--text-3); margin-left: 3px; transition: transform 0.12s, background 0.12s; }
 .toggle.on::before { background: var(--accent-soft); border-color: rgba(255, 178, 36, 0.6); }
 .toggle.on .toggle-knob { transform: translateX(12px); background: var(--accent); }
 .toggle-label { color: var(--text-2); }

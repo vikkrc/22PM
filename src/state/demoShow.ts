@@ -48,9 +48,9 @@ export function makeDemoShow(courtyardAsset: string, objectAsset?: string): Show
 
   // A low point light breathing on the beat, cold.
   const point = clip(makeClip('light.point', 8, 56), 'clip_point', 'Low point', {
-    'pos.x': 0.3, 'pos.y': 0.5, 'pos.z': 1.7, 'color.r': 0.35, 'color.g': 0.55, 'color.b': 1, intensity: 1.5, range: 7,
+    'pos.x': 0.3, 'pos.y': 1.0, 'pos.z': 1.7, 'color.r': 0.35, 'color.g': 0.55, 'color.b': 1, intensity: 0.6, range: 7,
   });
-  const beat = makeModulator('beat', 3) as BeatMod;
+  const beat = makeModulator('beat', 1.2) as BeatMod;
   beat.id = 'mod_beat'; beat.every = 1; beat.env = { a: 0.005, d: 0.28, s: 0, hold: 0, r: 0.05 };
   point.params.intensity.mods = [beat];
   const lfo = makeModulator('lfo', 0.6) as LfoMod;

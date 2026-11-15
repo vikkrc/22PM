@@ -99,7 +99,7 @@ export function App() {
   const [rightW, dragRight] = useSplit('right', 352, 280, 560, 'x', true);
   const [tlH, dragTl] = useSplit('timeline', 300, 120, 700, 'y', true);
 
-  useEffect(() => { void boot().then(() => setReady(true)); }, []);
+  useEffect(() => { void boot().then(() => { (window as any).__22pm.viewportBus = viewportBus; setReady(true); }); }, []);
   useEffect(() => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

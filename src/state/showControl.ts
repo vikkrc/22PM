@@ -23,6 +23,7 @@ class ShowControl {
   midiError = '';
   lastTc = 0;
   private decoder = new MtcDecoder();
+  private shownStatus = '';
   private access: MIDIAccess | null = null;
   private listeners = new Set<Listener>();
   output: Window | null = null;
@@ -85,7 +86,6 @@ class ShowControl {
   /** Called once per frame in chase mode: follow timecode to the right song and position. */
   follow() {
     if (this.source !== 'mtc') return;
-    const prev = this.chase.status;
     const r = chasePosition(this.chase, performance.now() / 1000, this.freewheelSec);
     this.chase = r.state;
     this.lastTc = r.tc;
@@ -99,7 +99,7 @@ class ShowControl {
         transport.setExternal(Math.min(hit.sec, songDuration(song)));
       }
     }
-    if (prev !== r.state.status) this.emit();
+    if (this.shownStatus !== r.state.status) { this.shownStatus = r.state.status; this.emit(); }
   }
 }
 

@@ -145,7 +145,8 @@ const pill = await page.locator('.status-pill').textContent();
 const tsec = await page.evaluate(() => window.__22pm.transport.sec);
 check('timecode chase locks and drives the position', pill === 'Locked' && tsec > 0.5, `${pill}, ${tsec.toFixed(2)} s`);
 await page.click('.btn:has-text("Stop test timecode")');
-await page.waitForTimeout(3200);
+// The software GPU can take seconds per frame, so poll rather than assume real-time.
+await page.waitForFunction(() => document.querySelector('.status-pill')?.textContent === 'Holding last frame', null, { timeout: 30000 }).catch(() => {});
 const pill2 = await page.locator('.status-pill').textContent();
 const held = await page.evaluate(() => window.__22pm.transport.sec);
 await page.waitForTimeout(500);

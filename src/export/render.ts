@@ -103,11 +103,21 @@ export function startRender(renderer: Renderer, show: Show, song: Song, analysis
 
     const stream = sink.kind === 'file' ? await sink.handle.createWritable() : null;
     const target = stream ? new FileSystemWritableFileStreamTarget(stream) : new ArrayBufferTarget();
-    const wantAudio = s.embedAudio && !!audio && typeof AudioEncoder !== 'undefined';
+    // AAC where the browser can encode it (Chrome on macOS), otherwise Opus; if neither, the file is written silent.
+    let audioCfg: { codec: string; mux: 'aac' | 'opus'; ch: number; sr: number } | null = null;
+    if (s.embedAudio && audio && typeof AudioEncoder !== 'undefined') {
+      const ch = Math.min(2, audio.numberOfChannels), sr = audio.sampleRate;
+      for (const [codec, mux] of [['mp4a.40.2', 'aac'], ['opus', 'opus']] as const) {
+        try {
+          if ((await AudioEncoder.isConfigSupported({ codec, numberOfChannels: ch, sampleRate: sr, bitrate: 256000 })).supported) { audioCfg = { codec, mux, ch, sr }; break; }
+        } catch { /* try the next one */ }
+      }
+    }
+    const wantAudio = !!audioCfg;
     const muxer = new Muxer({
       target: target as any,
       video: { codec: MUX_CODEC[s.codec], width: s.width, height: s.height, frameRate: s.fps },
-      audio: wantAudio ? { codec: 'aac', numberOfChannels: Math.min(2, audio!.numberOfChannels), sampleRate: audio!.sampleRate } : undefined,
+      audio: audioCfg ? { codec: audioCfg.mux, numberOfChannels: audioCfg.ch, sampleRate: audioCfg.sr } : undefined,
       fastStart: stream ? false : 'in-memory',
       firstTimestampBehavior: 'offset',
     });
@@ -133,9 +143,9 @@ export function startRender(renderer: Renderer, show: Show, song: Song, analysis
     enc.close();
 
     if (wantAudio && !cancelled) {
-      const ch = Math.min(2, audio!.numberOfChannels), sr = audio!.sampleRate;
+      const { ch, sr, codec } = audioCfg!;
       const aenc = new AudioEncoder({ output: (chunk, meta) => muxer.addAudioChunk(chunk, meta), error: (e) => { encError = e; } });
-      aenc.configure({ codec: 'mp4a.40.2', numberOfChannels: ch, sampleRate: sr, bitrate: 256000 });
+      aenc.configure({ codec, numberOfChannels: ch, sampleRate: sr, bitrate: 256000 });
       const startS = Math.round(t0 * sr), endS = Math.round((t0 + i / s.fps) * sr);
       const block = 4096;
       for (let p = startS; p < endS; p += block) {
@@ -153,8 +163,9 @@ export function startRender(renderer: Renderer, show: Show, song: Song, analysis
       aenc.close();
     }
     muxer.finalize();
-    if (stream) { await stream.close(); return { blob: null, frames: i, note: cancelled ? 'Cancelled (partial file written)' : 'Saved' }; }
-    return { blob: new Blob([(target as ArrayBufferTarget).buffer], { type: 'video/mp4' }), frames: i, note: cancelled ? 'Cancelled' : 'Done' };
+    const silent = s.embedAudio && audio && !audioCfg ? ' (no audio: this browser cannot encode AAC or Opus)' : '';
+    if (stream) { await stream.close(); return { blob: null, frames: i, note: (cancelled ? 'Cancelled, partial file written' : 'Saved') + silent }; }
+    return { blob: new Blob([(target as ArrayBufferTarget).buffer], { type: 'video/mp4' }), frames: i, note: (cancelled ? 'Cancelled' : 'Done') + silent };
   })();
   return { cancel: () => { cancelled = true; }, done };
 }

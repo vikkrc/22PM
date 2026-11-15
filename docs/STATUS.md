@@ -54,7 +54,7 @@ Everything was developed and tested on Linux against a software GPU. That proves
 - Splat IO and preprocessing; procedural demo scans.
 - Offline audio analysis in a worker, cached per asset.
 - UI: Animate (viewport with gizmos, registry-driven inspector, timeline with keyframe lanes), Show, render dialog; Train and Edit as honest placeholders with asset versioning.
-- Tests: 32 unit tests, golden-frame render tests, end-to-end UI test.
+- Tests: 32 unit tests (`npm test`); with the dev server running, golden-frame render tests (`npm run test:golden`), a 36-step UI test (`npm run test:ui`) and an import → analyse → render test (`npm run test:import`). The browser tests need Chromium with Playwright and are slow on a software GPU.
 
 ## Demo note – what to try
 

@@ -62,8 +62,7 @@ check('waveform is drawn in the timeline', wavePixels > 500, `${wavePixels} px`)
 const env = await page.evaluate(async () => {
   const { evaluate } = await import('/src/core/evaluate.ts');
   const { makeModulator } = await import('/src/core/model.ts');
-  const rt = await import('/src/state/runtime.ts');
-  const d = window.__22pm;
+  const d = window.__22pm, rt = d;
   d.update((_s, sg) => { const c = sg.tracks.flatMap((t) => t.clips).find((x) => x.id === 'clip_spot'); c.start = 0; c.fadeIn = 0; c.params.intensity = { base: 10, mods: [{ ...makeModulator('onset', 50), detector: 'kick' }] }; });
   const s = d.getState(), sg = s.show.songs[0], an = rt.analysisFor(sg);
   const at = (sec) => evaluate(s.show, sg, sec, an).lights.find((l) => l.id === 'clip_spot')?.intensity ?? -1;
@@ -76,7 +75,7 @@ check('onset trigger fires on the kick and decays', env.onKick > 40 && env.betwe
 const imp = await page.evaluate(async () => {
   const { makeDemoObject } = await import('/src/splat/demo.ts');
   const { writePly } = await import('/src/splat/ply.ts');
-  const rt = await import('/src/state/runtime.ts');
+  const rt = window.__22pm;
   const file = new File([writePly(makeDemoObject(5000, 3))], 'scan_test.ply');
   const id = await rt.importSplatFile(file);
   const again = new File([writePly(makeDemoObject(3000, 3))], 'scan_test_clean.ply');
@@ -94,8 +93,7 @@ check('a cleaned file becomes a new version and the scene updates in place', imp
 // Render a short range to video (or PNG where no encoder exists) through the real export path.
 const out = await page.evaluate(async () => {
   const ex = await import('/src/export/render.ts');
-  const rt = await import('/src/state/runtime.ts');
-  const { viewportBus } = await import('/src/ui/Viewport.tsx');
+  const rt = window.__22pm, viewportBus = rt.viewportBus;
   const s = window.__22pm.getState(), sg = s.show.songs[0];
   const codecs = await ex.supportedCodecs(320, 180, 30);
   const renderer = await rt.getRenderer();
@@ -107,7 +105,7 @@ const out = await page.evaluate(async () => {
     const job = ex.startRender(renderer, s.show, sg, rt.analysisFor(sg), audio, settings, { kind: 'memory' }, () => {});
     const r = await job.done;
     const head = new Uint8Array(await r.blob.slice(0, 12).arrayBuffer());
-    res[codec] = { frames: r.frames, bytes: r.blob.size, magic: String.fromCharCode(...head.slice(codec === 'png' ? 0 : 4, codec === 'png' ? 2 : 8)) };
+    res[codec] = { note: r.note, frames: r.frames, bytes: r.blob.size, magic: String.fromCharCode(...head.slice(codec === 'png' ? 0 : 4, codec === 'png' ? 2 : 8)) };
   }
   viewportBus.paused = false;
   return { codecs, res };
