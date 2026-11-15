@@ -1,6 +1,6 @@
 // A small ready-made show: the procedural courtyard lit by a few animated lights.
 // Used for first launch, the render harness and golden tests. Ids are fixed so output is reproducible.
-import { makeClip, makeModulator, makeShow, makeInstance, type Clip, type LfoMod, type BeatMod, type Show } from '../core/model';
+import { makeClip, makeModulator, makeShow, makeInstance, makeTrack, type Clip, type LfoMod, type BeatMod, type Show } from '../core/model';
 
 export function makeDemoShow(courtyardAsset: string, objectAsset?: string): Show {
   const show = makeShow();
@@ -17,6 +17,7 @@ export function makeDemoShow(courtyardAsset: string, objectAsset?: string): Show
     show.assets.push({ id: objectAsset, type: 'splat', name: 'Demo vase', versions: [{ id: 'raw', label: 'raw', file: '', created: '' }] });
     song.scene.splats.push({ ...makeInstance(objectAsset, 'Vase'), id: 'spl_vase', pos: [2.1, 0.74, 0.95], scale: 0.6 });
   }
+  song.tracks.splice(3, 0, makeTrack('light', 'Lights 3'));
   song.tracks.forEach((t, i) => (t.id = `trk_${i}`));
   const base = song.scene.base;
   base.camera.length = base.global.length = base.post.length = song.lengthBeats;
@@ -47,9 +48,9 @@ export function makeDemoShow(courtyardAsset: string, objectAsset?: string): Show
 
   // A low point light breathing on the beat, cold.
   const point = clip(makeClip('light.point', 8, 56), 'clip_point', 'Low point', {
-    'pos.x': 0.3, 'pos.y': 0.5, 'pos.z': 1.7, 'color.r': 0.35, 'color.g': 0.55, 'color.b': 1, intensity: 5, range: 7,
+    'pos.x': 0.3, 'pos.y': 0.5, 'pos.z': 1.7, 'color.r': 0.35, 'color.g': 0.55, 'color.b': 1, intensity: 1.5, range: 7,
   });
-  const beat = makeModulator('beat', 5) as BeatMod;
+  const beat = makeModulator('beat', 3) as BeatMod;
   beat.id = 'mod_beat'; beat.every = 1; beat.env = { a: 0.005, d: 0.28, s: 0, hold: 0, r: 0.05 };
   point.params.intensity.mods = [beat];
   const lfo = makeModulator('lfo', 0.6) as LfoMod;
@@ -61,14 +62,14 @@ export function makeDemoShow(courtyardAsset: string, objectAsset?: string): Show
   const sun = clip(makeClip('light.sun', 32, 16), 'clip_sun', 'Raking sun', { azimuth: -60, elevation: 14, 'color.r': 1, 'color.g': 0.5, 'color.b': 0.3, intensity: 1.6 });
   sun.fadeIn = 2; sun.fadeOut = 4;
   sun.params.azimuth.keys = [key(0, -70, 'linear'), key(16, 20)];
-  song.tracks[1].clips.push(sun);
+  song.tracks[3].clips.push(sun);
 
   // Depth sweep in the verse, disperse in the outro, gentle wobble throughout.
   const sweep = clip(makeClip('anim.sweep', 16, 16), 'clip_sweep', 'Sweep', { pattern: 1, effect: 3, width: 0.5, feather: 0.6, gain: 5 });
   sweep.params.position.keys = [key(0, 0, 'linear'), key(16, 9)];
-  song.tracks[3].clips.push(sweep);
+  song.tracks[4].clips.push(sweep);
   const disperse = clip(makeClip('anim.disperse', 48, 16), 'clip_disperse', 'Come apart', { amount: 0, noiseScale: 1.1 });
   disperse.params.amount.keys = [key(0, 0), key(16, 1.6)];
-  song.tracks[3].clips.push(disperse);
+  song.tracks[4].clips.push(disperse);
   return show;
 }

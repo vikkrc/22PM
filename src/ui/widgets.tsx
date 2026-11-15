@@ -97,7 +97,8 @@ export function Num({ value, onChange, step = 0.01, min = -Infinity, max = Infin
           e.preventDefault();
           onChange(clampV(value + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : 1)));
         } else if (e.key === 'Enter') setEditing(fmt(value, step / 10));
-      }}>
+      }}
+      onKeyUp={(e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') commit(); }}>
       {fill != null && <span className="num-fill" style={{ width: `${fill * 100}%` }} />}
       {liveX != null && <span className="num-live" style={{ left: `${liveX * 100}%` }} />}
       {label && <span className="num-label">{label}</span>}

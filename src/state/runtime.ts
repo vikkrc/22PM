@@ -7,7 +7,7 @@ import { newId } from '../core/rng';
 import { beatsToDuration, secToBeat } from '../core/tempo';
 import { makeDemoShow } from './demoShow';
 import { readFile, writeFile } from './fs';
-import { bumpAssets, currentSong, getState, loadShow, markSaved, select, startJob, subscribe, toast, update } from './store';
+import { bumpAssets, currentSong, getState, loadShow, markSaved, select, setUi, startJob, subscribe, toast, update } from './store';
 import { transport } from './transport';
 
 let rendererPromise: Promise<Renderer> | null = null;
@@ -28,7 +28,10 @@ function resolveVersion(show: Show, assetId: string, version?: string) {
   return v ? { asset, v } : null;
 }
 
-function prepareInWorker(msg: { name: string; buf?: ArrayBuffer; demo?: string }): Promise<PreparedSplat> {
+/** ?lite in the URL shrinks the demo scene (for software GPUs and headless tests). */
+export const LITE = typeof location !== 'undefined' && new URLSearchParams(location.search).has('lite');
+
+function prepareInWorker(msg: { name: string; buf?: ArrayBuffer; demo?: string; lite?: boolean }): Promise<PreparedSplat> {
   return new Promise((resolve, reject) => {
     const w = new Worker(new URL('../splat/splat.worker.ts', import.meta.url), { type: 'module' });
     w.onmessage = (e) => { w.terminate(); if (e.data.ok) resolve(e.data.ok); else reject(new Error(e.data.error)); };
@@ -47,7 +50,7 @@ export async function ensureSplat(show: Show, assetId: string, version?: string)
   const job = startJob(`Preparing ${r.asset.name}`);
   try {
     let p: PreparedSplat;
-    if (assetId.startsWith('demo_')) p = await prepareInWorker({ name: assetId, demo: assetId });
+    if (assetId.startsWith('demo_')) p = await prepareInWorker({ name: assetId, demo: assetId, lite: LITE });
     else {
       const f = await readFile(r.v.file);
       if (!f) throw new Error(`Missing file ${r.v.file}`);
@@ -242,8 +245,13 @@ export async function boot(): Promise<void> {
     if (f) show = JSON.parse(await f.text());
   } catch (e) { console.warn('Could not read saved show', e); }
   if (!show || show.format !== '22pm-show') show = makeDemoShow('demo_courtyard', 'demo_object');
+  if (LITE) for (const s of show.songs) s.scene.shadowResolution = 512;
   loadShow(show);
   select({ type: 'none' });
+  if (LITE) setUi({ previewScale: 0.5 });
+
+  // Handle for tests and console debugging.
+  (window as any).__22pm = { getState, transport, splats, getRenderer, update, select, setUi };
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let lastShow = getState().show;

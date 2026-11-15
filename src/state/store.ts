@@ -89,7 +89,8 @@ export function update(fn: (show: Show, song: Song) => void, merge?: string) {
   const song = next.songs.find((x) => x.id === state.ui.songId) ?? next.songs[0];
   fn(next, song);
   const now = performance.now();
-  const coalesce = merge && merge === lastMerge && now - lastMergeAt < 1500;
+  // A run ends at commit() (pointer up, key up). The time limit only guards against a missed commit.
+  const coalesce = merge && merge === lastMerge && now - lastMergeAt < 30000;
   if (!coalesce) {
     past.push(state.show);
     if (past.length > HISTORY) past.shift();

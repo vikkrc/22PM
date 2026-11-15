@@ -8,7 +8,7 @@ import { clipActive } from '../core/evaluate';
 import { secToBeat } from '../core/tempo';
 import { findClip, type Clip, type Song } from '../core/model';
 import { KINDS } from '../core/registry';
-import { analysisFor, getRenderer, splatFor } from '../state/runtime';
+import { analysisFor, getRenderer, LITE, splatFor } from '../state/runtime';
 import { currentSong, getState, select, setUi, useStore, commit } from '../state/store';
 import { transport } from '../state/transport';
 import { patchSplat, setParams, staticValue } from '../state/actions';
@@ -184,7 +184,7 @@ export function Viewport({ hidden }: { hidden: boolean }) {
       let cw = pw, chh = pw / aspect;
       if (chh > ph) { chh = ph; cw = ph * aspect; }
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const scale = live ? Infinity : u.previewScale;
+      const scale = live ? (LITE ? 0.25 : Infinity) : u.previewScale;
       const pxW = Math.max(2, Math.round(Math.min(out.width, cw * dpr * scale))), pxH = Math.max(2, Math.round(pxW / aspect));
       if (canvas.width !== pxW || canvas.height !== pxH) { canvas.width = pxW; canvas.height = pxH; poke(); }
       canvas.style.width = `${Math.floor(cw)}px`; canvas.style.height = `${Math.floor(chh)}px`;

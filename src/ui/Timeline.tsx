@@ -12,6 +12,13 @@ import { Menu, Select, Text } from './widgets';
 
 const HEAD_W = 184;
 
+/** Follow a drag on the window, so it survives the dragged element re-rendering or moving between rows. */
+function trackDrag(move: (ev: PointerEvent) => void, end?: () => void) {
+  const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); end?.(); };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+
 const snapOf = (e: { altKey: boolean }): SnapMode => (e.altKey ? 'off' : getState().ui.snap);
 
 function useLaneMetrics() {
@@ -78,7 +85,6 @@ function Ruler({ song, width }: { song: Song; width: number }) {
 
   const scrub = (e: React.PointerEvent) => {
     const el = e.currentTarget as HTMLElement;
-    el.setPointerCapture(e.pointerId);
     const go = (ev: { clientX: number; altKey: boolean }) => {
       const r = el.getBoundingClientRect();
       const { pxPerBeat, scrollBeat } = getState().ui;
@@ -87,8 +93,7 @@ function Ruler({ song, width }: { song: Song; width: number }) {
     };
     go(e);
     const move = (ev: PointerEvent) => go(ev);
-    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
-    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
+    trackDrag(move);
   };
   return <canvas ref={ref} className="tl-ruler" style={{ width, height: 38 }} onPointerDown={scrub} onDoubleClick={(e) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -149,7 +154,6 @@ function ClipView({ clip, track, song }: { clip: Clip; track: Track; song: Song 
     e.stopPropagation();
     select({ type: 'clip', id: clip.id });
     const el = e.currentTarget as HTMLElement;
-    el.setPointerCapture(e.pointerId);
     const x0 = e.clientX, start0 = clip.start, len0 = clip.length, fi0 = clip.fadeIn, fo0 = clip.fadeOut;
     let moved = false;
     const move = (ev: PointerEvent) => {
@@ -169,8 +173,7 @@ function ClipView({ clip, track, song }: { clip: Clip; track: Track; song: Song 
       else if (mode === 'fi') patchClip(clip.id, { fadeIn: Math.max(0, sn(start0 + fi0 + db) - start0) }, 'fade');
       else patchClip(clip.id, { fadeOut: Math.max(0, start0 + len0 - sn(start0 + len0 - fo0 + db)) }, 'fade');
     };
-    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); commit(); };
-    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
+    trackDrag(move, commit);
   };
 
   const fiW = clip.fadeIn * ppb, foW = clip.fadeOut * ppb;
@@ -262,7 +265,6 @@ function KeyLane({ clip, group, song, width }: { clip: Clip; group: ParamGroup; 
     else if (!isSel(t)) refs = here;
     setUi({ selectedKeys: refs });
     const el = e.currentTarget as HTMLElement;
-    el.setPointerCapture(e.pointerId);
     const x0 = e.clientX;
     const orig = refs.map((r) => ({ ...r, t: clip.params[r.param]?.keys?.find((k) => k.id === r.keyId)?.t ?? 0 }));
     const move = (ev: PointerEvent) => {
@@ -271,8 +273,7 @@ function KeyLane({ clip, group, song, width }: { clip: Clip; group: ParamGroup; 
       const delta = target - t;
       moveKeys(clip.id, orig.map((o) => ({ param: o.param, keyId: o.keyId, t: o.t + delta })));
     };
-    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); commit(); };
-    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
+    trackDrag(move, commit);
   };
 
   return (

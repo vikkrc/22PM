@@ -96,7 +96,7 @@ export function App() {
   const [dropping, setDropping] = useState(false);
   const dragDepth = useRef(0);
   const [leftW, dragLeft] = useSplit('left', 232, 160, 420, 'x');
-  const [rightW, dragRight] = useSplit('right', 320, 260, 520, 'x', true);
+  const [rightW, dragRight] = useSplit('right', 352, 280, 560, 'x', true);
   const [tlH, dragTl] = useSplit('timeline', 300, 120, 700, 'y', true);
 
   useEffect(() => { void boot().then(() => setReady(true)); }, []);

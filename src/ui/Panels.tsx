@@ -38,7 +38,6 @@ export function TopBar() {
   const loop = useStore((s) => s.ui.loop);
   const playing = usePlaying();
   const fileRef = useRef<HTMLInputElement>(null);
-  const song = useSong();
   const running = jobs.filter((j) => j.status === 'running');
   return (
     <header className="topbar">
@@ -87,7 +86,6 @@ export function TopBar() {
           toast('Project opened. Splat and audio files are stored per browser; re-import any that are missing.');
         } catch (err) { toast(`Could not open: ${(err as Error).message}`); }
       }} />
-      <span hidden>{song.id}</span>
     </header>
   );
 }

@@ -5,9 +5,9 @@ import { EASE_PRESETS, findClip, type Clip, type Keyframe, type LfoMod, type Mod
 import { evalParam } from '../core/evaluate';
 import { evalModulator, type ModCtx } from '../core/modulators';
 import { cubicBezier } from '../core/curves';
-import { beatToSec, formatBBT, secToBeat } from '../core/tempo';
+import { beatToSec, secToBeat } from '../core/tempo';
 import { analysisFor, importAudioFile, latestVersion, splatFor } from '../state/runtime';
-import { getState, select, setUi, update, useSong, useStore } from '../state/store';
+import { commit, select, update, useSong, useStore } from '../state/store';
 import { transport } from '../state/transport';
 import {
   addModulator, clearKeys, copyModulators, deleteClip, duplicateClip, editKeys, hasKeyAt, hasModClipboard, pasteModulators, patchClip, patchModulator, patchSong, patchSplat,
@@ -220,7 +220,7 @@ function ParamRow({ clip, group, song, sec, beat }: { clip: Clip; group: ParamGr
     body = <ColorField rgb={vals as [number, number, number]} onChange={(c) => setParams(clip.id, { [ids[0]]: c[0], [ids[1]]: c[1], [ids[2]]: c[2] }, group.id)} />;
   } else if (group.widget === 'vec3') {
     body = group.defs.map((d, i) => (
-      <Num key={d.id} label={'XYZ'[i]} className={`axis-${'xyz'[i]}`} value={vals[i]} step={d.step} min={d.min} max={d.max} unit={i === 2 ? d.unit : undefined}
+      <Num key={d.id} label={'XYZ'[i]} className={`axis-${'xyz'[i]}`} value={vals[i]} step={d.step} min={d.min} max={d.max}
         onChange={(v) => setParams(clip.id, { [d.id]: v }, d.id)} />
     ));
   } else if (d0.type === 'bool') {
@@ -277,7 +277,7 @@ function EaseEditor({ k, onChange }: { k: Keyframe; onChange: (e: [number, numbe
       n[idx * 2] = Math.round(x * 100) / 100; n[idx * 2 + 1] = Math.round(y * 100) / 100;
       onChange(n);
     };
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); commit(); };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
   return (
@@ -380,7 +380,7 @@ function ClipInspector({ clip, isBase, song }: { clip: Clip; isBase: boolean; so
 function Vec3Row({ label, value, onChange, step = 0.01, unit, title }: { label: string; value: [number, number, number]; onChange: (v: [number, number, number]) => void; step?: number; unit?: string; title?: string }) {
   return (
     <Row label={label} title={title}>
-      {[0, 1, 2].map((i) => <Num key={i} label={'XYZ'[i]} className={`axis-${'xyz'[i]}`} value={value[i]} step={step} unit={i === 2 ? unit : undefined} onChange={(v) => { const n = [...value] as [number, number, number]; n[i] = v; onChange(n); }} />)}
+      {[0, 1, 2].map((i) => <Num key={i} label={'XYZ'[i]} className={`axis-${'xyz'[i]}`} value={value[i]} step={step} title={unit ? `${label} ${'XYZ'[i]} (${unit})` : undefined} onChange={(v) => { const n = [...value] as [number, number, number]; n[i] = v; onChange(n); }} />)}
     </Row>
   );
 }
@@ -545,4 +545,3 @@ export function Inspector() {
   return <SongInspector song={song} />;
 }
 
-export { formatBBT, getState, setUi };

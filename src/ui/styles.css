@@ -149,6 +149,7 @@ kbd { border: 1px solid var(--line-2); border-bottom-width: 2px; }
 .num-unit { color: var(--text-3); font-size: 10px; position: relative; }
 .num.editing { cursor: text; border-color: var(--accent); }
 .num.editing input { flex: 1; min-width: 0; width: 100%; border: 0; background: none; outline: none; text-align: right; font: inherit; user-select: text; -webkit-user-select: text; }
+.num[class*='axis-'] { padding: 0 4px; gap: 2px; }
 .num.axis-x .num-label { color: var(--x); }
 .num.axis-y .num-label { color: var(--y); }
 .num.axis-z .num-label { color: var(--z); }
@@ -197,7 +198,7 @@ kbd { border: 1px solid var(--line-2); border-bottom-width: 2px; }
 .chev.open { transform: rotate(90deg); }
 .section-body { padding: 0 0 8px; }
 .row { display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 12px; min-height: 26px; }
-.row-label { width: 92px; flex: none; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-label { width: 86px; flex: none; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-label .text { padding: 2px 5px; }
 .row-body { flex: 1; display: flex; align-items: center; gap: 4px; min-width: 0; }
 .row-actions { display: flex; align-items: center; gap: 1px; flex: none; min-width: 44px; justify-content: flex-end; }
