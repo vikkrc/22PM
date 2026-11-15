@@ -1,6 +1,6 @@
 // Solver interface for in-app splat creation (brief section 3b, milestone M1b).
 // Two backends are planned: Vauss (video) and COLMAP + Brush (photos). Both run as subprocesses,
-// so they need the desktop shell; in the browser build neither is available.
+// so they need the desktop app (electron/main.cjs); in a plain browser neither is available.
 // Per the brief: take exact commands and flags from the tool's own README / --help. Never guess them.
 
 export interface SolveRequest {
@@ -33,7 +33,7 @@ export interface SplatSolver {
   run(req: SolveRequest, onProgress: (fraction: number, stage: string) => void, signal: AbortSignal): Promise<SolveResult>;
 }
 
-const needsShell = 'Needs the desktop shell to run a subprocess.';
+const needsShell = 'Not wired up yet (milestone M1b).';
 
 export const solvers: SplatSolver[] = [
   { id: 'vauss', accepts: 'video', available: async () => ({ ok: false, reason: needsShell }), run: async () => { throw new Error(needsShell); } },

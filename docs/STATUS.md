@@ -4,6 +4,8 @@ Read this after `docs/BRIEF.md`. It says what exists, what does not, where the b
 
 ## Where this build stands
 
+**Desktop app (0.2.0):** 22PM now ships as a Mac app built with Electron (Chromium inside, so WebGPU behaves as it did in Chrome). GitHub builds the `.dmg` on every push. Projects are real folders on disk.
+
 The brief says to start with M0 only and to decide the stack at gate G0. This first pass was asked to go further and build the tool with its UI, Animate first. It is written in **TypeScript + WebGPU** (the brief's recommended spike stack; option B without the Tauri shell yet). **Gates G0, G1 and G2 are still open**: nothing here has been judged on real scans or measured on the M4 Max.
 
 Everything was developed and tested on Linux against a software GPU. That proves the code is correct, not that it is fast or that the look holds up on real captures.
@@ -31,7 +33,8 @@ Everything was developed and tested on Linux against a software GPU. That proves
 - **GPU radix sort.** Sorting is a CPU counting sort in a worker (on the render thread for export). Fine for hundreds of thousands of Gaussians; the 3–5M target needs measuring and probably the GPU sort.
 - **LOD, culling hierarchy, attribute compression.**
 - **Mesh proxy for shadows and normals** (depends on Train).
-- **Desktop shell (Tauri or native).** Runs in the browser. The project lives in the browser's private file system; "Export project file" saves the JSON only, not the splat and audio files.
+- **Apple signing and notarisation.** The app is signed ad hoc, so the first launch needs System Settings → Privacy & Security → Open Anyway. A Developer ID certificate in the repository secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`) would remove that step; the build hook already steps aside when one is present.
+- **Rendering does not pause safely when the main window is minimised.** The output window is fed from the main window's render loop, so minimising the main window freezes the output. Keep it open (it can sit behind the output on another display).
 - Everything in the brief's "Later" column.
 
 ## Deviations from the brief worth knowing
@@ -47,6 +50,17 @@ Everything was developed and tested on Linux against a software GPU. That proves
 
 ## Changelog
 
+### 0.2.0 – Mac app
+
+- Electron shell (`electron/`): the built app is served from inside the bundle; no dev server or Terminal needed.
+- Projects are folders on disk (`show.json`, `assets/`, `cache/`), default `~/Documents/22PM/Délután 10`. File → Open / New Project Folder, Open Recent, Show in Finder. Writes are atomic (temp file + rename), and quitting waits for the last autosave.
+- Render to video writes straight to the file chosen in a native save dialog (positioned writes, so long songs do not fill memory). PNG sequences go to a chosen folder. "Show in Finder" afterwards.
+- Show tab: pick the display for the LED output; it opens fullscreen there and the display is kept awake while it is open.
+- MIDI (timecode) permission is granted by the app, no browser prompt. Background throttling is off so playback never slows when another window has focus.
+- Native menu bar (Cmd+1–4 for tabs, Cmd+I import, Cmd+Shift+R render). Reload is not on a shortcut, so it cannot blank the output mid-show.
+- GitHub Actions builds an ad-hoc-signed `.dmg` and `.zip` for Apple Silicon on every push; tags `v*` become releases.
+- Tests: `tests/electron.mjs`, 15 checks on the real desktop app (bundled app loads, WebGPU renders, autosave to disk, import into the folder, native MP4 export, menu commands, displays, output window, save on quit, reopen). Passes on the dev build and on the packaged app (Linux, software GPU).
+
 ### 0.1.0 – first pass (M0–M7 in software, unverified on target hardware)
 
 - Core: parameter registry, data model, tempo maths, keyframe curves, modulators, pure `evaluate()`, SMPTE / MTC / chase.
@@ -58,6 +72,7 @@ Everything was developed and tested on Linux against a software GPU. That proves
 
 ## Demo note – what to try
 
+0. **Mac app:** download the `.dmg` from the latest *Mac app* run in the Actions tab, drag 22PM to Applications, and open it (first time: System Settings → Privacy & Security → Open Anyway). Everything below works the same in the app.
 1. `npm run dev`, open in Chrome. The demo courtyard loads with a camera push, a warm spot, a cool point light pulsing on the beat, a low sun in the chorus, a depth sweep and a disperse at the end. Press **Space**.
 2. Switch the viewport to **Explore** (key `2`). Click the *Key spot* clip. Drag the axis handles to move where it aims; watch the shadows. Press `1` to go back to the camera.
 3. In the inspector, drag a number to scrub it (Shift = fine), or click and type (`*2`, `+0.5` work). Click **◆** to key it, move the playhead, change it again.

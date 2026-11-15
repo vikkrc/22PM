@@ -1,7 +1,7 @@
 {
   "name": "22pm",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,13 +11,11 @@
     "test": "vitest run",
     "test:golden": "node tests/golden.mjs",
     "test:ui": "node tests/ui.mjs",
-    "test:import": "node tests/import.mjs"
-  },
-  "dependencies": {
-    "fflate": "^0.8.3",
-    "mp4-muxer": "^5.2.2",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "test:import": "node tests/import.mjs",
+    "app": "vite build && electron .",
+    "app:dev": "node scripts/app-dev.mjs",
+    "dist:mac": "vite build && electron-builder --mac --arm64 --publish never",
+    "test:electron": "node tests/electron.mjs"
   },
   "devDependencies": {
     "@types/dom-webcodecs": "^0.1.19",
@@ -26,8 +24,69 @@
     "@types/webmidi": "^2.1.0",
     "@vitejs/plugin-react": "^6.3.0",
     "@webgpu/types": "^0.1.74",
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0",
+    "fflate": "^0.8.3",
+    "mp4-muxer": "^5.2.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
+  },
+  "description": "Gaussian-splat concert visuals for the Délután 10 tour",
+  "author": "Viktor Krč",
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.jovilagvan.22pm",
+    "productName": "22PM",
+    "copyright": "© 2026 Viktor Krč",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "!dist/harness.html"
+    ],
+    "asar": true,
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.video",
+      "icon": "build/icon.png",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "darkModeSupport": true,
+      "minimumSystemVersion": "13.0",
+      "extendInfo": {
+        "NSHighResolutionCapable": true,
+        "LSApplicationCategoryType": "public.app-category.video"
+      }
+    },
+    "dmg": {
+      "title": "22PM ${version}",
+      "artifactName": "22PM-${version}-mac-${arch}.${ext}"
+    },
+    "linux": {
+      "target": "dir",
+      "category": "Video"
+    },
+    "afterPack": "scripts/after-pack.cjs"
   }
 }

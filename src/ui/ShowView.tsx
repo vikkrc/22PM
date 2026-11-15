@@ -8,6 +8,7 @@ import { transport } from '../state/transport';
 import { showControl } from '../state/showControl';
 import { addSong, moveSong, removeSong } from '../state/actions';
 import { Num, Select } from './widgets';
+import { native, type DisplayInfo } from '../state/native';
 import { viewportBus } from './Viewport';
 
 function useShowControl() {
@@ -17,8 +18,13 @@ function useShowControl() {
   return showControl;
 }
 
-export function openOutput() {
-  if (showControl.output && !showControl.output.closed) { showControl.output.focus(); return; }
+export async function openOutput(displayId?: number | null) {
+  if (showControl.output && !showControl.output.closed) {
+    if (displayId === undefined) { showControl.output.focus(); return; }
+    showControl.output.close();
+  }
+  // Desktop app: the shell places the window fullscreen on this display.
+  if (native) await native.setOutputDisplay(displayId ?? null);
   const w = window.open('', '22pm-output', 'width=960,height=540');
   if (!w) return;
   w.document.title = '22PM output';
@@ -28,6 +34,7 @@ export function openOutput() {
   const fs = () => { void w.document.documentElement.requestFullscreen?.(); };
   w.document.addEventListener('dblclick', fs);
   w.document.addEventListener('keydown', (e) => { if (e.key === 'f' || e.key === 'F') fs(); else window.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, code: e.code })); });
+  w.addEventListener('beforeunload', () => setTimeout(() => showControl.emit(), 0));
   showControl.output = w;
   showControl.emit();
   viewportBus.redraw();
@@ -108,6 +115,19 @@ export function ShowStatus() {
   };
   const status = sc.source === 'mtc' ? sc.chase.status : transport.playing ? 'running' : 'stopped';
   const outOpen = !!sc.output && !sc.output.closed;
+  const [displays, setDisplays] = useState<DisplayInfo[]>([]);
+  const [displayId, setDisplayId] = useState<number | null>(null);
+  useEffect(() => {
+    if (!native) return;
+    const load = () => native!.displays().then((d) => {
+      setDisplays(d);
+      // Default to the first display that is not the laptop screen: that is usually the LED processor.
+      setDisplayId((cur) => (cur != null && d.some((x) => x.id === cur) ? cur : (d.find((x) => !x.primary) ?? d[0])?.id ?? null));
+    });
+    void load();
+    const t = setInterval(load, 3000);
+    return () => clearInterval(t);
+  }, []);
   return (
     <aside className="panel right show-right">
       <div className="panel-scroll">
@@ -138,8 +158,28 @@ export function ShowStatus() {
         </div>
         <div className="show-group">
           <div className="list-head">Output</div>
-          <button className={`btn ${outOpen ? 'on' : ''}`} onClick={openOutput}>{outOpen ? 'Output window open' : 'Open output window'}</button>
-          <div className="hint">Drag it to the LED processor's display and press F for fullscreen. {show.output.width}×{show.output.height}.</div>
+          {native ? (
+            <>
+              <Select value={displayId ?? -1} title="Display the LED processor is connected to"
+                options={displays.length ? displays.map((d) => ({ value: d.id, label: d.label })) : [{ value: -1, label: 'Looking for displays…' }]}
+                onChange={(id) => { setDisplayId(id); if (outOpen) void openOutput(id); }} />
+              <div className="btn-row">
+                <button className={`btn ${outOpen ? 'on' : ''}`} style={{ flex: 1 }} onClick={() => void openOutput(displayId)}>{outOpen ? 'Output on' : 'Open output'}</button>
+                {outOpen && <button className="btn" onClick={() => { sc.output?.close(); sc.emit(); }}>Close</button>}
+              </div>
+              <div className="hint">
+                {displays.find((d) => d.id === displayId)?.primary
+                  ? 'This is the main screen, so the output opens as a window. Connect the LED processor and pick it here for fullscreen.'
+                  : 'Opens fullscreen on that display; the display will not sleep while it is open.'}{' '}
+                Renders at {show.output.width}×{show.output.height}.
+              </div>
+            </>
+          ) : (
+            <>
+              <button className={`btn ${outOpen ? 'on' : ''}`} onClick={() => void openOutput()}>{outOpen ? 'Output window open' : 'Open output window'}</button>
+              <div className="hint">Drag it to the LED processor's display and press F for fullscreen. {show.output.width}×{show.output.height}.</div>
+            </>
+          )}
         </div>
         <div className="show-group">
           <div className="list-head">Safety</div>

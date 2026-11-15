@@ -1,6 +1,7 @@
 // Frame-stepped render to video (brief section 10). Uses the same evaluate() + renderer as live playback,
 // stepped by frame index and never tied to real time.
-import { ArrayBufferTarget, FileSystemWritableFileStreamTarget, Muxer } from 'mp4-muxer';
+import { ArrayBufferTarget, FileSystemWritableFileStreamTarget, Muxer, StreamTarget } from 'mp4-muxer';
+import { native } from '../state/native';
 import { Zip, ZipPassThrough } from 'fflate';
 import { evaluate } from '../core/evaluate';
 import type { Show, Song } from '../core/model';
@@ -46,12 +47,23 @@ export async function supportedCodecs(width: number, height: number, fps: number
   return out;
 }
 
-export interface RenderJob { cancel: () => void; done: Promise<{ blob: Blob | null; frames: number; note: string }> }
+export interface RenderJob { cancel: () => void; done: Promise<{ blob: Blob | null; frames: number; note: string; path?: string }> }
 
-type Sink = { kind: 'file'; handle: FileSystemFileHandle } | { kind: 'dir'; handle: FileSystemDirectoryHandle } | { kind: 'memory' };
+export type Sink =
+  | { kind: 'file'; handle: FileSystemFileHandle }
+  | { kind: 'dir'; handle: FileSystemDirectoryHandle }
+  /** Desktop app: a file or folder the user picked in a native dialog. */
+  | { kind: 'native-file'; handle: number; path: string }
+  | { kind: 'native-dir'; handle: number; path: string }
+  | { kind: 'memory' };
 
 /** Ask where to write before rendering starts (needs a user gesture). Falls back to memory + download. */
 export async function chooseSink(codec: Codec, name: string): Promise<Sink> {
+  if (native) {
+    const h = codec === 'png' ? await native.out.dirDialog() : await native.out.saveDialog(`${name}.mp4`, [{ name: 'MP4 video', extensions: ['mp4'] }]);
+    if (!h) throw new DOMException('Cancelled', 'AbortError');
+    return { kind: codec === 'png' ? 'native-dir' : 'native-file', ...h };
+  }
   const w = window as any;
   try {
     if (codec === 'png' && w.showDirectoryPicker) return { kind: 'dir', handle: await w.showDirectoryPicker({ mode: 'readwrite' }) };
@@ -87,7 +99,9 @@ export function startRender(renderer: Renderer, show: Show, song: Song, analysis
         g.putImageData(new ImageData(new Uint8ClampedArray(px.buffer as ArrayBuffer), s.width, s.height), 0, 0);
         const blob = await canvas.convertToBlob({ type: 'image/png' });
         const name = `frame_${String(i + 1).padStart(6, '0')}.png`;
-        if (sink.kind === 'dir') {
+        if (sink.kind === 'native-dir') {
+          await native!.out.writeFile(sink.handle, name, new Uint8Array(await blob.arrayBuffer()));
+        } else if (sink.kind === 'dir') {
           const w = await (await sink.handle.getFileHandle(name, { create: true })).createWritable();
           await w.write(blob); await w.close();
         } else if (zip) {
@@ -98,11 +112,19 @@ export function startRender(renderer: Renderer, show: Show, song: Song, analysis
         onProgress(i + 1, total, i % 4 === 0 ? px : null);
       }
       zip?.end();
-      return { blob: zip ? new Blob(chunks as BlobPart[], { type: 'application/zip' }) : null, frames: i, note: cancelled ? 'Cancelled' : 'PNG sequence written' };
+      if (sink.kind === 'native-dir') await native!.out.close(sink.handle);
+      return { blob: zip ? new Blob(chunks as BlobPart[], { type: 'application/zip' }) : null, frames: i, note: cancelled ? 'Cancelled' : 'PNG sequence written', path: sink.kind === 'native-dir' ? sink.path : undefined };
     }
 
     const stream = sink.kind === 'file' ? await sink.handle.createWritable() : null;
-    const target = stream ? new FileSystemWritableFileStreamTarget(stream) : new ArrayBufferTarget();
+    // Desktop: positioned writes straight into the chosen file, so memory stays flat for long songs.
+    const pending: Promise<void>[] = [];
+    let writeError: unknown = null;
+    const nativeTarget = sink.kind === 'native-file'
+      ? new StreamTarget({ onData: (data, position) => { pending.push(native!.out.write(sink.handle, data.slice(), position).catch((e) => { writeError = e; })); }, chunked: true })
+      : null;
+    const target = nativeTarget ?? (stream ? new FileSystemWritableFileStreamTarget(stream) : new ArrayBufferTarget());
+    const streaming = !!(stream || nativeTarget);
     // AAC where the browser can encode it (Chrome on macOS), otherwise Opus; if neither, the file is written silent.
     let audioCfg: { codec: string; mux: 'aac' | 'opus'; ch: number; sr: number } | null = null;
     if (s.embedAudio && audio && typeof AudioEncoder !== 'undefined') {
@@ -118,7 +140,7 @@ export function startRender(renderer: Renderer, show: Show, song: Song, analysis
       target: target as any,
       video: { codec: MUX_CODEC[s.codec], width: s.width, height: s.height, frameRate: s.fps },
       audio: audioCfg ? { codec: audioCfg.mux, numberOfChannels: audioCfg.ch, sampleRate: audioCfg.sr } : undefined,
-      fastStart: stream ? false : 'in-memory',
+      fastStart: streaming ? false : 'in-memory',
       firstTimestampBehavior: 'offset',
     });
     let encError: Error | null = null;
@@ -164,6 +186,12 @@ export function startRender(renderer: Renderer, show: Show, song: Song, analysis
     }
     muxer.finalize();
     const silent = s.embedAudio && audio && !audioCfg ? ' (no audio: this browser cannot encode AAC or Opus)' : '';
+    if (nativeTarget && sink.kind === 'native-file') {
+      await Promise.all(pending);
+      await native!.out.close(sink.handle);
+      if (writeError) throw writeError;
+      return { blob: null, frames: i, note: (cancelled ? 'Cancelled, partial file written' : 'Saved') + silent, path: sink.path };
+    }
     if (stream) { await stream.close(); return { blob: null, frames: i, note: (cancelled ? 'Cancelled, partial file written' : 'Saved') + silent }; }
     return { blob: new Blob([(target as ArrayBufferTarget).buffer], { type: 'video/mp4' }), frames: i, note: (cancelled ? 'Cancelled' : 'Done') + silent };
   })();

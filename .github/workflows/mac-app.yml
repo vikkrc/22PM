@@ -1,0 +1,74 @@
+name: Mac app
+
+# Builds 22PM.app for Apple Silicon on every push and pull request.
+# The .dmg is attached to the workflow run (Actions tab → run → Artifacts).
+# Pushing a tag like v0.2.0 also publishes it as a GitHub release.
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck and unit tests
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build the Mac app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run dist:mac
+
+      - name: Check the app bundle
+        run: |
+          ls -la release
+          codesign --verify --deep --strict --verbose=2 release/mac-arm64/22PM.app
+          du -sh release/mac-arm64/22PM.app
+
+      # GitHub's Mac runners are virtual machines, so WebGPU may be missing or slow here.
+      # This smoke test is informative; it does not block the build.
+      - name: Smoke-test the packaged app
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          TWENTYTWO_EXE: ${{ github.workspace }}/release/mac-arm64/22PM.app/Contents/MacOS/22PM
+        run: |
+          npm install --no-save playwright
+          node tests/electron.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 22PM-mac-arm64
+          path: |
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.dmg
+            release/*.zip
+          generate_release_notes: true

@@ -8,11 +8,14 @@ Bespoke tool for building and playing the LED visuals of jóvilágvan's Délutá
 
 ```bash
 npm install
-npm run dev        # app at http://127.0.0.1:5173  (needs a WebGPU browser)
+npm run app:dev    # desktop app (Electron) with hot reload
+npm run dev        # browser version at http://127.0.0.1:5173  (needs a WebGPU browser)
+npm run dist:mac   # package release/22PM-…-mac-arm64.dmg (macOS only; CI does this on every push)
 npm test           # unit tests: tempo, curves, modulators, evaluate, timecode, file IO, audio analysis
 npm run typecheck
 node tests/golden.mjs   # golden-frame render tests (dev server must be running)
 node tests/ui.mjs       # end-to-end UI test (dev server must be running)
+node tests/electron.mjs # desktop app test on the built app (run `npx vite build` first; `xvfb-run -a` on Linux)
 ```
 
 `?lite` on the URL shrinks the demo scene for slow GPUs. `harness.html` is the headless render harness the golden tests use.
@@ -26,6 +29,8 @@ node tests/ui.mjs       # end-to-end UI test (dev server must be running)
 - `src/state/` – project store with undo (`store.ts`), edit operations (`actions.ts`), assets/persistence (`runtime.ts`), transport, show control.
 - `src/export/` – frame-stepped render to video.
 - `src/ui/` – React UI. `src/train/` – solver interface (stubs).
+- `electron/` – desktop shell: `main.cjs` (window, menu, project folder on disk, output display, render file writes), `preload.cjs` (exposed to the page as `window.native`, typed in `src/state/native.ts`).
+- `.github/workflows/mac-app.yml` – builds the ad-hoc-signed `.dmg` on GitHub's Mac runners.
 
 ## Hard rules (from the brief)
 
@@ -34,6 +39,7 @@ node tests/ui.mjs       # end-to-end UI test (dev server must be running)
 - **Conventions.** Metres, seconds, beats. Right-handed, Y-up. Linear colour internally, sRGB / Rec.709 on output. Timeline time is stored in beats; seconds are derived from the song's tempo map.
 - **Edits go through `state/actions.ts`** (which calls `update()`), so everything is undoable.
 - **Show-safe.** Never an unintended black frame; on timecode dropout freewheel, then hold.
+- **Two runtimes.** The page must keep working in a plain browser too: guard every desktop feature with `native` / `isDesktop` from `src/state/native.ts`. The shell only serves files, touches disk inside the project folder (or paths the user picked in a dialog), and places windows.
 - Ask before big architecture changes or new heavy dependencies.
 - Vauss: never fork or modify it, and take commands/flags from its README and `--help`. Never guess them.
 - Each milestone ends with a changelog entry and a demo note in `docs/STATUS.md`.

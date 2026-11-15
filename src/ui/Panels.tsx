@@ -9,6 +9,7 @@ import { currentSong, dismissJob, getState, loadShow, redo, select, setUi, toast
 import { transport } from '../state/transport';
 import { addSong, patchSplat } from '../state/actions';
 import { download, readFile } from '../state/fs';
+import { isDesktop, native } from '../state/native';
 import { chooseSink, CODEC_LABEL, startRender, supportedCodecs, type Codec, type RenderJob, type RenderSettings } from '../export/render';
 import { BBT, Menu, Num, Row, Section, Select, Toggle } from './widgets';
 import { PositionReadout } from './Timeline';
@@ -65,10 +66,16 @@ export function TopBar() {
       {jobs.filter((j) => j.status === 'error').map((j) => <button key={j.id} className="btn danger" title={j.error} onClick={() => dismissJob(j.id)}>{j.label} failed ×</button>)}
       <button className="btn icon" title="Undo (⌘Z)" disabled={!canUndo} onClick={undo}>↶</button>
       <button className="btn icon" title="Redo (⇧⌘Z)" disabled={!canRedo} onClick={redo}>↷</button>
-      <span className={`save-dot ${dirty ? 'dirty' : ''}`} title={dirty ? 'Saving…' : 'All changes saved in this browser'} />
+      <span className={`save-dot ${dirty ? 'dirty' : ''}`} title={dirty ? 'Saving…' : isDesktop ? 'All changes saved to the project folder' : 'All changes saved in this browser'} />
       <button className="btn primary" title="Render this song to video" onClick={() => setUi({ dialog: 'render' })}>Render</button>
       <Menu trigger="⋯" title="Project" className="right" items={[
         { heading: show.name },
+        ...(isDesktop ? [
+          { label: 'Show project in Finder', onClick: () => void native!.project.reveal() },
+          { label: 'Open project folder…', onClick: () => void native!.project.choose(false) },
+          { label: 'New project folder…', onClick: () => void native!.project.choose(true) },
+          'sep' as const,
+        ] : []),
         { label: 'Export project file…', onClick: () => download(`${show.name.replace(/[^\w-]+/g, '_')}.22pm.json`, new Blob([JSON.stringify(show, null, 1)], { type: 'application/json' })) },
         { label: 'Open project file…', onClick: () => fileRef.current?.click() },
         'sep',
@@ -183,6 +190,7 @@ export function RenderDialog() {
   }));
   const [progress, setProgress] = useState<{ done: number; total: number; started: number } | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [resultPath, setResultPath] = useState<string | null>(null);
   const job = useRef<RenderJob | null>(null);
   const preview = useRef<HTMLCanvasElement>(null);
   const set = (p: Partial<RenderSettings>) => setSt((s) => ({ ...s, ...p }));
@@ -197,8 +205,12 @@ export function RenderDialog() {
 
   const go = async () => {
     setResult(null);
+    setResultPath(null);
     let sink;
-    try { sink = await chooseSink(st.codec, song.title.replace(/[^\w-]+/g, '_')); } catch { return; }
+    try { sink = await chooseSink(st.codec, song.title.replace(/[^\w-]+/g, '_')); } catch (e) {
+      if ((e as Error).name !== 'AbortError') setResult(`Render failed: ${(e as Error).message}`);
+      return;
+    }
     const renderer = await getRenderer();
     transport.pause();
     viewportBus.paused = true;
@@ -217,6 +229,7 @@ export function RenderDialog() {
       const r = await job.current.done;
       if (r.blob) download(`${song.title.replace(/[^\w-]+/g, '_')}.${st.codec === 'png' ? 'zip' : 'mp4'}`, r.blob);
       setResult(`${r.note}: ${r.frames} frames in ${((performance.now() - started) / 1000).toFixed(1)} s.`);
+      setResultPath(r.path ?? null);
     } catch (e) {
       setResult(`Render failed: ${(e as Error).message}`);
     } finally {
@@ -273,7 +286,8 @@ export function RenderDialog() {
                 <div className="render-info mono">Frame {progress.done} / {progress.total}{eta != null ? ` · about ${eta > 90 ? `${Math.round(eta / 60)} min` : `${Math.round(eta)} s`} left` : ''}</div>
               </>
             )}
-            {result && <div className={`render-result ${result.startsWith('Render failed') ? 'bad' : ''}`}>{result}</div>}
+            {result && <div className={`render-result ${result.startsWith('Render failed') ? 'bad' : ''}`}>{result}
+              {resultPath && native && <button className="link" style={{ marginLeft: 8 }} onClick={() => void native!.out.reveal(resultPath)}>Show in Finder</button>}</div>}
             <div className="hint">Rendering runs the same evaluate → render path as live playback, one frame at a time, so the file matches the show frame for frame.</div>
           </div>
         </div>
@@ -340,9 +354,9 @@ export function TrainTab() {
     <div className="page">
       <div className="page-inner">
         <h1>Train</h1>
-        <p className="lead">Turn phone or camera video into a splat. Training runs the <code>vauss</code> command-line tool as a separate process, which a browser cannot start.</p>
+        <p className="lead">Turn phone or camera video into a splat. Training runs the <code>vauss</code> command-line tool as a separate process.</p>
         <div className="notice">
-          <b>Not wired up in this build.</b> In-app training (milestone M1b) needs the desktop shell to spawn Vauss, or COLMAP + Brush for photos. The solver interface is in <code>src/train/solver.ts</code>. Until then, train outside 22PM and import the result here: it lands in the same asset library, with versions, ready for Edit and Animate.
+          <b>Not wired up yet.</b> In-app training (milestone M1b) is next: the desktop app will run Vauss for video, or COLMAP + Brush for photos, as separate processes. The solver interface is in <code>src/train/solver.ts</code>. Until then, train outside 22PM and import the result here: it lands in the same asset library, with versions, ready for Edit and Animate.
         </div>
         <div className="btn-row">
           <button className="btn primary" onClick={() => fileRef.current?.click()}>Import .ply / .spz…</button>

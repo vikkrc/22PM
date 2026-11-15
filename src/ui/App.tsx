@@ -6,11 +6,31 @@ import { currentSong, getState, redo, setUi, undo, useStore } from '../state/sto
 import { transport } from '../state/transport';
 import { deleteClip, deleteSelectedKeys, duplicateClip, patchClip, splitClip } from '../state/actions';
 import { showControl } from '../state/showControl';
+import { native } from '../state/native';
 import { Viewport, viewportBus } from './Viewport';
 import { Inspector } from './Inspector';
 import { Timeline } from './Timeline';
 import { EditTab, RenderDialog, ScenePanel, ShortcutsDialog, toggleLoop, TopBar, TrainTab } from './Panels';
 import { ShowSetlist, ShowStatus, skipSong } from './ShowView';
+
+/** Commands from the desktop app's menu bar (electron/main.cjs). */
+function onMenu(cmd: string, importInput: HTMLInputElement | null) {
+  const t = document.activeElement as HTMLElement | null;
+  const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+  if (cmd === 'undo') { if (typing) document.execCommand('undo'); else undo(); }
+  else if (cmd === 'redo') { if (typing) document.execCommand('redo'); else redo(); }
+  else if (cmd === 'render') setUi({ dialog: 'render' });
+  else if (cmd === 'shortcuts') setUi({ dialog: 'shortcuts' });
+  else if (cmd === 'import') importInput?.click();
+  else if (cmd.startsWith('tab:')) setUi({ tab: cmd.slice(4) as any });
+}
+
+function importFiles(files: Iterable<File>) {
+  for (const f of files) {
+    if (/\.(ply|spz)$/i.test(f.name)) void importSplatFile(f);
+    else if (f.type.startsWith('audio/') || /\.(wav|mp3|aif|aiff|flac|m4a|ogg)$/i.test(f.name)) void importAudioFile(f);
+  }
+}
 
 function onKey(e: KeyboardEvent) {
   const t = e.target as HTMLElement | null;
@@ -100,6 +120,13 @@ export function App() {
   const [tlH, dragTl] = useSplit('timeline', 300, 120, 700, 'y', true);
 
   useEffect(() => { void boot().then(() => { (window as any).__22pm.viewportBus = viewportBus; setReady(true); }); }, []);
+  const importRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!native) return;
+    document.body.classList.add('desktop', `os-${native.platform}`);
+    native.onMenu((cmd) => onMenu(cmd, importRef.current));
+    native.onFlush(() => saveNow());
+  }, []);
   useEffect(() => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -109,10 +136,7 @@ export function App() {
     e.preventDefault();
     dragDepth.current = 0;
     setDropping(false);
-    for (const f of e.dataTransfer.files) {
-      if (/\.(ply|spz)$/i.test(f.name)) void importSplatFile(f);
-      else if (f.type.startsWith('audio/') || /\.(wav|mp3|aif|aiff|flac|m4a|ogg)$/i.test(f.name)) void importAudioFile(f);
-    }
+    importFiles(e.dataTransfer.files);
   };
   const viewportVisible = tab === 'animate' || tab === 'show';
   return (
@@ -139,6 +163,7 @@ export function App() {
       {dialog === 'shortcuts' && <ShortcutsDialog />}
       {dropping && <div className="drop-veil"><div>Drop .ply / .spz scans or a song's audio</div></div>}
       {toastMsg && <div className="toast" role="status">{toastMsg}</div>}
+      <input ref={importRef} type="file" accept=".ply,.spz,audio/*,.wav,.mp3,.aif,.aiff,.flac,.m4a" multiple hidden onChange={(e) => { if (e.target.files) importFiles(e.target.files); e.target.value = ''; }} />
     </div>
   );
 }

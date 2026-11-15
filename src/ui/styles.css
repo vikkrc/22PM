@@ -449,3 +449,8 @@ kbd { border: 1px solid var(--line-2); border-bottom-width: 2px; }
 .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 300; background: var(--raised-2); border: 1px solid var(--line-2); border-radius: 7px; padding: 9px 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6); max-width: 70vw; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation-duration: 0.01s !important; } }
+
+/* ---- desktop app (macOS title bar) ---- */
+body.desktop.os-darwin .topbar { padding-left: 84px; -webkit-app-region: drag; }
+body.desktop .topbar button, body.desktop .topbar select, body.desktop .topbar input, body.desktop .topbar .pos,
+body.desktop .topbar .menu, body.desktop .topbar .jobs { -webkit-app-region: no-drag; }
